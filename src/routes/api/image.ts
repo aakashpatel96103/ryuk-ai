@@ -5,13 +5,13 @@ type ImageRequestBody = {
   model?: string;
 };
 
-// 1. High-speed Pollinations FLUX Engine (High quality, zero rate limits, FLUX.1 architecture)
-async function generateViaPollinations(prompt: string, model = "flux"): Promise<{ b64: string; mediaType: string }> {
+// High-speed FLUX Image Generation Engine (1024x1024 photorealistic output)
+async function generateImageWithFlux(prompt: string, model = "flux"): Promise<{ b64: string; mediaType: string }> {
   const encPrompt = encodeURIComponent(prompt);
   const url = `https://image.pollinations.ai/prompt/${encPrompt}?width=1024&height=1024&nologo=true&model=${encodeURIComponent(model)}`;
-  
+
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
     const res = await fetch(url, {
@@ -23,7 +23,7 @@ async function generateViaPollinations(prompt: string, model = "flux"): Promise<
     });
 
     if (!res.ok) {
-      throw new Error(`Pollinations HTTP ${res.status}`);
+      throw new Error(`Image API HTTP ${res.status}`);
     }
 
     const contentType = res.headers.get("content-type") || "image/jpeg";
@@ -33,61 +33,6 @@ async function generateViaPollinations(prompt: string, model = "flux"): Promise<
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-// 2. Hugging Face Together FLUX Engine
-async function generateViaHuggingFace(prompt: string, apiKey: string, requestedModel?: string) {
-  const HUGGINGFACE_IMAGES_URL = "https://router.huggingface.co/together/v1/images/generations";
-  const modelsToTry = Array.from(
-    new Set([
-      requestedModel,
-      "black-forest-labs/FLUX.1-schnell",
-      "black-forest-labs/FLUX.1-dev",
-    ].filter((m): m is string => Boolean(m)))
-  );
-
-  let lastError = "Failed to generate image on Hugging Face.";
-
-  for (const modelName of modelsToTry) {
-    try {
-      const upstream = await fetch(HUGGINGFACE_IMAGES_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: modelName,
-          prompt,
-        }),
-      });
-
-      const data = await upstream.json().catch(() => null);
-      if (!upstream.ok || !data) {
-        const msg = data?.error?.message || data?.error || `HTTP ${upstream.status}`;
-        lastError = `Hugging Face error (${upstream.status}): ${msg}`;
-        continue;
-      }
-
-      const imgObj = data.data?.[0];
-      if (imgObj?.b64_json) {
-        return { b64: imgObj.b64_json as string, mediaType: "image/png" };
-      }
-
-      if (imgObj?.url) {
-        const imgRes = await fetch(imgObj.url);
-        if (!imgRes.ok) continue;
-        const buffer = await imgRes.arrayBuffer();
-        const b64 = Buffer.from(buffer).toString("base64");
-        const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-        return { b64, mediaType: contentType };
-      }
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-    }
-  }
-
-  throw new Error(lastError);
 }
 
 export const Route = createFileRoute("/api/image")({
@@ -106,38 +51,25 @@ export const Route = createFileRoute("/api/image")({
         }
 
         const prompt = body.prompt.trim();
-        const hfKey = process.env["HUGGINGFACE_API_KEY"];
 
-        // Strategy 1: Pollinations FLUX Engine (Fast, High Quality, No Quotas)
+        // 1. Primary: FLUX.1 generation
         try {
-          const result = await generateViaPollinations(prompt, "flux");
+          const result = await generateImageWithFlux(prompt, "flux");
           if (result.b64 && result.b64.length > 500) {
             return Response.json(result);
           }
         } catch (err) {
-          console.warn("Pollinations FLUX image error, trying fallback:", err);
+          console.warn("Primary FLUX image generation warning:", err);
         }
 
-        // Strategy 2: Hugging Face Together FLUX (if key configured)
-        if (hfKey) {
-          try {
-            const result = await generateViaHuggingFace(prompt, hfKey, body.model);
-            if (result.b64) {
-              return Response.json(result);
-            }
-          } catch (err) {
-            console.warn("Hugging Face image error, trying secondary Pollinations turbo:", err);
-          }
-        }
-
-        // Strategy 3: Pollinations Turbo fallback
+        // 2. Secondary: Turbo generation fallback
         try {
-          const result = await generateViaPollinations(prompt, "turbo");
-          if (result.b64) {
+          const result = await generateImageWithFlux(prompt, "turbo");
+          if (result.b64 && result.b64.length > 500) {
             return Response.json(result);
           }
         } catch (err) {
-          console.error("Secondary Pollinations error:", err);
+          console.error("Secondary Turbo image generation error:", err);
         }
 
         return Response.json(
