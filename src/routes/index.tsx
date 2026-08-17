@@ -1877,9 +1877,11 @@ function ChatPage() {
                   <img src={logo} alt="rYuk.ai logo" width={52} height={52} className="relative size-12 sm:size-13 drop-shadow-2xl animate-float-slow" />
                 </div>
 
-                {/* Claude-Style Dynamic Day Headline */}
-                <h1 className="font-serif text-xl sm:text-3xl md:text-4xl font-normal tracking-tight text-foreground/95 px-4">
-                  {new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date())} session, {user?.displayName ? user.displayName.split(" ")[0] : "rYuk"}?
+                {/* Clean, Modern AI Workspace Headline */}
+                <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight text-foreground/95 px-4">
+                  {user?.displayName
+                    ? `What would you like to explore, ${user.displayName.split(" ")[0]}?`
+                    : "What would you like to explore today?"}
                 </h1>
               </div>
             ) : (
