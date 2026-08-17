@@ -506,6 +506,10 @@ export const Route = createFileRoute("/api/chat")({
           (id) => !FREE_TIER_PRIORITY.includes(id) && !id.includes("dots-3-note-preview")
         );
 
+        const ORDERED_FALLBACK_CHAIN = Array.from(
+          new Set([...PRIMARY_TIER_MODELS, ...FREE_TIER_PRIORITY, ...remainingFree])
+        );
+
         const VISION_PRIORITY_MODELS = [
           "openai/gpt-4o",
           "openai/gpt-4o-mini",
