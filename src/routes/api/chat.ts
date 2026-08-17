@@ -354,8 +354,8 @@ export const Route = createFileRoute("/api/chat")({
 
         const taskParams = detectTaskParameters(body.messages);
 
-        // Check if hybrid ensemble mode is enabled
-        if (body.hybridMode?.enabled) {
+        // Check if hybrid ensemble mode is enabled (bypass for image tasks to prioritize OpenAI GPT Vision directly)
+        if (body.hybridMode?.enabled && taskParams.task !== "image") {
           const openrouterKey = process.env["OPENROUTER_API_KEY"];
 
           if (openrouterKey) {
@@ -506,9 +506,19 @@ export const Route = createFileRoute("/api/chat")({
           (id) => !FREE_TIER_PRIORITY.includes(id) && !id.includes("dots-3-note-preview")
         );
 
-        const ORDERED_FALLBACK_CHAIN = Array.from(
-          new Set([...PRIMARY_TIER_MODELS, ...FREE_TIER_PRIORITY, ...remainingFree])
-        );
+        const VISION_PRIORITY_MODELS = [
+          "openai/gpt-4o",
+          "openai/gpt-4o-mini",
+          "google/gemini-2.0-flash-001",
+          "anthropic/claude-3.5-sonnet",
+          "qwen/qwen-2.5-vl-72b-instruct",
+          "mistralai/pixtral-12b",
+        ];
+
+        const isImageTask = taskParams.task === "image";
+        const ACTIVE_CHAIN = isImageTask
+          ? Array.from(new Set([...VISION_PRIORITY_MODELS, ...ORDERED_FALLBACK_CHAIN]))
+          : ORDERED_FALLBACK_CHAIN;
 
         if (
           rawModel === "ryuk/v1-high" ||
@@ -520,7 +530,7 @@ export const Route = createFileRoute("/api/chat")({
           rawModel.includes("low") ||
           rawModel.includes("hybrid")
         ) {
-          for (const m of ORDERED_FALLBACK_CHAIN) {
+          for (const m of ACTIVE_CHAIN) {
             addCandidate(m);
           }
         } else {
@@ -528,7 +538,7 @@ export const Route = createFileRoute("/api/chat")({
           if (rawModel.includes("/") && !rawModel.startsWith("ryuk/")) {
             addCandidate(rawModel);
           }
-          for (const m of ORDERED_FALLBACK_CHAIN) {
+          for (const m of ACTIVE_CHAIN) {
             addCandidate(m);
           }
         }
