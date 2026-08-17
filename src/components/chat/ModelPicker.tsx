@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Check, ChevronDown, ChevronRight, Cpu, Sparkles, X, Zap } from "lucide-react";
 
 import {
@@ -20,30 +20,44 @@ export function ModelPicker({ value, onChange }: Props) {
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const active = MODELS.find((m) => m.id === value) ?? MODELS[0]!;
 
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (mobileSheetOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+    return undefined;
+  }, [mobileSheetOpen]);
+
   return (
     <>
       {/* Mobile Trigger Button */}
       <button
         type="button"
         onClick={() => setMobileSheetOpen(true)}
-        className="sm:hidden inline-flex items-center gap-1 rounded-full bg-secondary/80 hover:bg-secondary border border-border/60 px-2 py-1 text-[11px] font-medium text-foreground transition-all active:scale-95 cursor-pointer shadow-xs shrink-0 max-w-[110px]"
+        className="sm:hidden inline-flex items-center gap-1.5 rounded-full bg-secondary/80 hover:bg-secondary border border-border/60 px-2.5 py-1.5 text-xs font-medium text-foreground transition-all active:scale-95 cursor-pointer shadow-xs shrink-0 max-w-[120px]"
       >
-        <Cpu className="size-3 text-primary shrink-0" />
-        <span className="truncate font-semibold text-[11px]">{active.name.split(" ")[0]}</span>
-        <span className="text-[9px] text-primary/80 font-bold bg-primary/10 px-1 py-0.2 rounded-full">{active.badge || "Auto"}</span>
+        <Cpu className="size-3.5 text-primary shrink-0" />
+        <span className="truncate font-semibold">{active.name.split(" ")[0]}</span>
+        {active.badge && (
+          <span className="text-[9px] text-primary/90 font-bold bg-primary/15 px-1.5 py-0.5 rounded-full">{active.badge}</span>
+        )}
       </button>
 
       {/* Mobile Bottom Sheet Modal (Claude Style) */}
       {mobileSheetOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end sm:hidden animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end sm:hidden animate-fade-in">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-xs"
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm"
             onClick={() => setMobileSheetOpen(false)}
+            aria-hidden="true"
           />
 
           {/* Drawer Sheet */}
-          <div className="relative z-10 w-full max-h-[85vh] overflow-y-auto rounded-t-[32px] border-t border-[#2a2a26] bg-[#161614] p-5 pb-8 shadow-2xl animate-in slide-in-from-bottom duration-300 text-foreground">
+          <div className="relative z-[110] w-full max-h-[85vh] overflow-y-auto rounded-t-[28px] border-t border-[#2a2a26] bg-[#161614] p-5 pb-safe shadow-2xl animate-in slide-in-from-bottom duration-300 text-foreground">
             {/* Drag Handle */}
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted/60" />
 
@@ -52,15 +66,16 @@ export function ModelPicker({ value, onChange }: Props) {
               <button
                 type="button"
                 onClick={() => setMobileSheetOpen(false)}
-                className="absolute left-0 flex size-9 items-center justify-center rounded-full bg-muted/40 text-muted-foreground hover:text-foreground active:scale-95"
+                aria-label="Close"
+                className="absolute left-0 flex size-10 items-center justify-center rounded-full bg-muted/40 text-muted-foreground hover:text-foreground active:scale-95 cursor-pointer"
               >
-                <X className="size-4" />
+                <X className="size-4.5" />
               </button>
-              <h2 className="font-display text-base font-bold text-foreground">Select model</h2>
+              <h2 className="font-display text-lg font-bold text-foreground">Select model</h2>
             </div>
 
             {/* Grouped Model List Card */}
-            <div className="mt-4 overflow-hidden rounded-2xl border border-border/50 bg-[#1e1e1b] divide-y divide-border/40">
+            <div className="mt-5 overflow-hidden rounded-2xl border border-border/50 bg-[#1e1e1b] divide-y divide-border/40">
               {MODELS.map((m) => {
                 const isSelected = m.id === value;
                 return (
@@ -72,13 +87,13 @@ export function ModelPicker({ value, onChange }: Props) {
                       setMobileSheetOpen(false);
                     }}
                     className={cn(
-                      "flex w-full items-start justify-between p-4 text-left transition-colors active:bg-primary/10",
-                      isSelected && "bg-primary/5",
+                      "flex w-full items-start justify-between p-4 text-left transition-colors active:bg-primary/10 cursor-pointer min-h-[68px]",
+                      isSelected && "bg-primary/8",
                     )}
                   >
                     <div className="min-w-0 flex-1 pr-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground">{m.name}</span>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[15px] font-semibold text-foreground">{m.name}</span>
                         {m.badge && (
                           <span className={cn(
                             "rounded-full px-2 py-0.5 text-[10px] font-bold",
@@ -90,13 +105,13 @@ export function ModelPicker({ value, onChange }: Props) {
                           </span>
                         )}
                       </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                      <p className="text-xs text-muted-foreground leading-relaxed">
                         {m.tagline}
                       </p>
                     </div>
                     {isSelected && (
-                      <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground mt-0.5">
-                        <Check className="size-3.5 stroke-[3]" />
+                      <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground mt-0.5">
+                        <Check className="size-4 stroke-[3]" />
                       </div>
                     )}
                   </button>

@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
-  AudioWaveform,
   Check,
   ChevronDown,
   Copy,
@@ -14,15 +13,12 @@ import {
   ImageIcon,
   Layers,
   LogOut,
-  Mic,
   PanelLeftOpen,
   Paperclip,
   Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
-  Share2,
-  Sparkles,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -50,17 +46,9 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import {
-  PromptInput,
-  PromptInputButton,
-  PromptInputFooter,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputTools,
-} from "@/components/ai-elements/prompt-input";
+
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { ChatSidebar, type Thread } from "@/components/chat/ChatSidebar";
-import { ModelPicker } from "@/components/chat/ModelPicker";
 import { PluginPicker } from "@/components/chat/PluginPicker";
 import { MODELS, PLUGINS, getPlugin, type PluginId } from "@/components/chat/plugins";
 import { Button } from "@/components/ui/button";
@@ -156,10 +144,6 @@ type ChatMessage = {
   createdAt?: number;
   feedback?: "like" | "dislike";
 };
-
-const THREADS: Thread[] = [];
-
-const SEED: ChatMessage[] = [];
 
 const SUGGESTIONS = [
   {
@@ -1000,7 +984,7 @@ function ChatPage() {
     } finally {
       setPending(false);
     }
-  }, [user, threads]);
+  }, [user]);
 
   const streamChat = useCallback(
     async (
@@ -1170,7 +1154,7 @@ function ChatPage() {
         setPending(false);
       }
     },
-    [user, threads],
+    [user],
   );
 
   const send = useCallback(
@@ -1246,7 +1230,6 @@ function ChatPage() {
       setPending(true);
 
       if (user && currentThreadId) {
-        const displayTitle = value ? (value.length > 32 ? value.slice(0, 32) + "..." : value) : (attachedFiles[0]?.name ?? "File Analysis");
         void saveUserChatSession(user.uid, currentThreadId, displayTitle, usePlugin !== "chat" ? usePlugin : undefined, updatedMessages);
       }
 
@@ -1511,12 +1494,12 @@ function ChatPage() {
         </header>
 
         {/* Hero Section */}
-        <main className="flex-1 max-w-7xl mx-auto w-full px-6 sm:px-10 py-6 lg:py-12 flex items-center">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 items-center w-full">
+        <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-10 py-6 lg:py-12 flex items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-16 items-center w-full">
             {/* Left Column: Original rYuk Heading & Auth Card */}
-            <div className="lg:col-span-6 space-y-7 max-w-xl animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
-              <div className="space-y-3">
-                <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#f3f3f0] leading-[1.12]">
+            <div className="lg:col-span-6 space-y-6 sm:space-y-7 max-w-xl mx-auto lg:mx-0 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
+              <div className="space-y-2 sm:space-y-3">
+                <h1 className="font-display text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#f3f3f0] leading-[1.12]">
                   Build, Reason & Create <span className="bg-gradient-to-r from-primary via-orange-400 to-amber-300 bg-clip-text text-transparent">Beyond Limits</span>
                 </h1>
                 <p className="text-sm sm:text-base text-[#9b9b94] leading-relaxed">
@@ -1525,12 +1508,12 @@ function ChatPage() {
               </div>
 
               {/* Auth Container Box */}
-              <div className="rounded-2xl border border-primary/20 bg-[#1a1a18]/90 p-6 sm:p-7 space-y-5 shadow-2xl backdrop-blur-md animate-border-glow">
+              <div className="rounded-2xl border border-primary/20 bg-[#1a1a18]/90 p-5 sm:p-6 md:p-7 space-y-4 sm:space-y-5 shadow-2xl backdrop-blur-md animate-border-glow">
                 {/* Google Direct Auth Button */}
                 <Button
                   size="lg"
                   onClick={handleGoogleSignIn}
-                  className="w-full bg-gradient-to-r from-primary via-orange-500 to-amber-500 hover:opacity-95 text-primary-foreground font-bold h-12 rounded-xl shadow-glow justify-center gap-3 transition-all text-sm cursor-pointer active:scale-[0.98]"
+                  className="w-full bg-gradient-to-r from-primary via-orange-500 to-amber-500 hover:opacity-95 text-primary-foreground font-bold h-11 sm:h-12 rounded-xl shadow-glow justify-center gap-2 sm:gap-3 transition-all text-sm cursor-pointer active:scale-[0.98]"
                 >
                   <svg className="size-4.5" viewBox="0 0 24 24">
                     <path fill="#ffffff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -1541,9 +1524,9 @@ function ChatPage() {
                   Continue with Google Directly
                 </Button>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                   <div className="h-px flex-1 bg-[#282825]" />
-                  <span className="text-[11px] font-mono text-[#73736c] uppercase tracking-wider">OR EMAIL AUTH</span>
+                  <span className="text-[10px] sm:text-[11px] font-mono text-[#73736c] uppercase tracking-wider">OR EMAIL AUTH</span>
                   <div className="h-px flex-1 bg-[#282825]" />
                 </div>
 
@@ -1553,19 +1536,19 @@ function ChatPage() {
                     type="button"
                     onClick={() => setAuthMode("register")}
                     className={cn(
-                      "flex-1 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer",
+                      "flex-1 rounded-lg py-2 text-xs sm:text-xs font-semibold transition-all cursor-pointer",
                       authMode === "register"
                         ? "bg-[#2a2a28] text-white shadow-sm border border-[#3a3a38]"
                         : "text-[#888880] hover:text-[#f0f0ed]",
                     )}
                   >
-                    Register (Create Account)
+                    Register
                   </button>
                   <button
                     type="button"
                     onClick={() => setAuthMode("signin")}
                     className={cn(
-                      "flex-1 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer",
+                      "flex-1 rounded-lg py-2 text-xs sm:text-xs font-semibold transition-all cursor-pointer",
                       authMode === "signin"
                         ? "bg-[#2a2a28] text-white shadow-sm border border-[#3a3a38]"
                         : "text-[#888880] hover:text-[#f0f0ed]",
@@ -1616,7 +1599,7 @@ function ChatPage() {
                         onChange={(e) => setNameInput(e.target.value)}
                         placeholder="Full Name"
                         required
-                        className="w-full h-11 px-4 rounded-xl bg-[#222220] border border-[#333330] text-[#f0f0ed] placeholder:text-[#666660] text-sm outline-none focus:border-primary/60 transition-all font-sans focus:ring-2 focus:ring-primary/20"
+                        className="w-full h-11 sm:h-11 px-3 sm:px-4 rounded-xl bg-[#222220] border border-[#333330] text-[#f0f0ed] placeholder:text-[#666660] text-sm outline-none focus:border-primary/60 transition-all font-sans focus:ring-2 focus:ring-primary/20"
                       />
                     </div>
                   )}
@@ -1628,7 +1611,7 @@ function ChatPage() {
                       onChange={(e) => setEmailInput(e.target.value)}
                       placeholder="Enter your email"
                       required
-                      className="w-full h-11 px-4 rounded-xl bg-[#222220] border border-[#333330] text-[#f0f0ed] placeholder:text-[#666660] text-sm outline-none focus:border-primary/60 transition-all font-sans focus:ring-2 focus:ring-primary/20"
+                      className="w-full h-11 sm:h-11 px-3 sm:px-4 rounded-xl bg-[#222220] border border-[#333330] text-[#f0f0ed] placeholder:text-[#666660] text-sm outline-none focus:border-primary/60 transition-all font-sans focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
 
@@ -1639,20 +1622,20 @@ function ChatPage() {
                       onChange={(e) => setPasswordInput(e.target.value)}
                       placeholder={authMode === "register" ? "Password (min 6 chars)" : "Enter password"}
                       required
-                      className="w-full h-11 px-4 rounded-xl bg-[#222220] border border-[#333330] text-[#f0f0ed] placeholder:text-[#666660] text-sm outline-none focus:border-primary/60 transition-all font-sans focus:ring-2 focus:ring-primary/20"
+                      className="w-full h-11 sm:h-11 px-3 sm:px-4 rounded-xl bg-[#222220] border border-[#333330] text-[#f0f0ed] placeholder:text-[#666660] text-sm outline-none focus:border-primary/60 transition-all font-sans focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
 
                   <Button
                     type="submit"
                     disabled={isAuthSubmitting}
-                    className="w-full bg-[#2a2a28] hover:bg-[#333330] text-[#f0f0ed] font-semibold h-11 rounded-xl border border-[#383835] text-sm transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50"
+                    className="w-full bg-[#2a2a28] hover:bg-[#333330] text-[#f0f0ed] font-semibold h-11 sm:h-11 rounded-xl border border-[#383835] text-sm transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50"
                   >
                     {isAuthSubmitting
                       ? "Processing..."
                       : authMode === "register"
-                        ? "Create rYuk.ai Account"
-                        : "Sign In with Email"}
+                        ? "Create Account"
+                        : "Sign In"}
                   </Button>
                 </form>
               </div>
@@ -1682,6 +1665,7 @@ function ChatPage() {
           <div
             className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xs md:hidden animate-fade-in"
             onClick={() => setSidebarOpen(false)}
+            aria-hidden="true"
           />
           <ChatSidebar
             threads={threads}
@@ -1703,7 +1687,7 @@ function ChatPage() {
             }}
             onClose={() => setSidebarOpen(false)}
             user={user}
-            className="fixed inset-y-0 left-0 z-50 w-[84vw] max-w-[310px] md:static md:z-auto md:w-72 shadow-2xl animate-in slide-in-from-left duration-200"
+            className="fixed inset-y-0 left-0 z-50 w-[280px] max-w-[85vw] md:static md:z-auto md:w-72 shadow-2xl animate-in slide-in-from-left duration-200"
           />
         </>
       ) : (
@@ -1721,40 +1705,40 @@ function ChatPage() {
       )}
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-border/40 px-3 sm:px-5 py-2.5 sm:py-3.5 select-none bg-background/80 backdrop-blur-md z-20">
+        <header className="flex items-center justify-between border-b border-border/40 px-3 sm:px-5 py-3 sm:py-3.5 select-none bg-background/80 backdrop-blur-md z-20 shrink-0">
           <button
             type="button"
             aria-label="Toggle sidebar"
             onClick={() => setSidebarOpen((prev) => !prev)}
-            className="flex size-9 sm:size-9.5 items-center justify-center rounded-full bg-secondary/80 hover:bg-secondary border border-border/60 text-foreground transition-all active:scale-95 cursor-pointer shadow-xs"
+            className="flex size-10 sm:size-9.5 items-center justify-center rounded-full bg-secondary/80 hover:bg-secondary border border-border/60 text-foreground transition-all active:scale-95 cursor-pointer shadow-xs shrink-0"
           >
-            <PanelLeftOpen className="size-4" />
+            <PanelLeftOpen className="size-4 sm:size-4.5" />
           </button>
 
-          <div className="min-w-0 flex-1 flex flex-col items-center justify-center px-2">
-            <h1 className="truncate font-serif text-sm sm:text-base font-bold text-foreground max-w-[140px] xs:max-w-[200px] sm:max-w-md text-center">
+          <div className="min-w-0 flex-1 flex flex-col items-center justify-center px-2 sm:px-3">
+            <h1 className="truncate font-serif text-sm sm:text-base font-bold text-foreground max-w-[180px] xs:max-w-[240px] sm:max-w-md text-center leading-tight">
               {threads.find((t) => t?.id === activeThread)?.title ?? "rYuk.ai"}
             </h1>
-            <p className="truncate text-[10px] sm:text-xs text-muted-foreground">
-              {getPlugin(plugin).label} · {MODELS.find((m) => m.id === model)?.name}
+            <p className="truncate text-[10px] sm:text-xs text-muted-foreground max-w-[200px] xs:max-w-[280px] sm:max-w-full">
+              {getPlugin(plugin).label}
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
             {/* Transparency Mode Toggle */}
             <button
               type="button"
               title={transparencyMode ? "Switch to OLED Dark Mode" : "Switch to Glass Transparency Mode"}
               onClick={() => setTransparencyMode((prev) => !prev)}
               className={cn(
-                "hidden sm:flex items-center gap-1 text-xs font-medium rounded-full transition-all px-2.5 py-1.5 cursor-pointer",
+                "hidden sm:flex items-center gap-1.5 text-xs font-medium rounded-full transition-all px-3 py-2 cursor-pointer",
                 transparencyMode
                   ? "bg-primary/20 text-primary border border-primary/40 shadow-glow"
                   : "text-muted-foreground hover:text-foreground bg-secondary/60 border border-border/40",
               )}
             >
               <Layers className="size-3.5" />
-              <span className="hidden md:inline text-[11px]">{transparencyMode ? "Glass On" : "Glass Off"}</span>
+              <span className="hidden lg:inline text-[11px]">{transparencyMode ? "Glass" : "Glass Off"}</span>
             </button>
 
             {/* Delete Active Chat Button */}
@@ -1763,20 +1747,20 @@ function ChatPage() {
                 type="button"
                 title="Delete active chat"
                 onClick={() => handleDeleteThread(activeThread)}
-                className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-all cursor-pointer"
+                className="flex size-10 sm:size-9 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/15 transition-all cursor-pointer shrink-0"
               >
                 <Trash2 className="size-4" />
               </button>
             )}
 
             {authLoading ? (
-              <div className="size-9 rounded-full bg-muted/40 animate-pulse" />
+              <div className="size-10 sm:size-9.5 rounded-full bg-muted/40 animate-pulse shrink-0" />
             ) : user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="flex size-9 sm:size-9.5 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-foreground shadow-xs hover:bg-primary/20 transition-all cursor-pointer outline-none active:scale-95 shrink-0"
+                    className="flex size-10 sm:size-9.5 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-foreground shadow-xs hover:bg-primary/20 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-95 shrink-0"
                     title={user.email || "Account Options"}
                   >
                     {user.photoURL ? (
@@ -1789,12 +1773,12 @@ function ChatPage() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 bg-[#161614] border border-[#2a2a26] text-foreground p-1.5 shadow-2xl rounded-xl z-50">
-                  <DropdownMenuLabel className="px-2 py-1.5 font-normal">
+                  <DropdownMenuLabel className="px-2 py-2">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-xs sm:text-sm font-semibold leading-none text-foreground">
+                      <p className="text-sm font-semibold leading-none text-foreground">
                         {user?.displayName || "User Account"}
                       </p>
-                      <p className="text-[11px] leading-none text-muted-foreground truncate">
+                      <p className="text-xs leading-none text-muted-foreground truncate">
                         {user?.email || "Signed in"}
                       </p>
                     </div>
@@ -1805,7 +1789,7 @@ function ChatPage() {
                       await logOut();
                       toast.info("Signed out successfully.");
                     }}
-                    className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer rounded-lg px-2 py-1.5 text-xs font-semibold gap-2"
+                    className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer rounded-lg px-2 py-2 text-sm font-semibold gap-2"
                   >
                     <LogOut className="size-4" />
                     <span>Log Out</span>
@@ -1816,7 +1800,7 @@ function ChatPage() {
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
-                className="flex size-9 sm:size-9.5 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-xs font-bold text-primary shadow-xs hover:bg-primary/20 active:scale-95 transition-all cursor-pointer shrink-0"
+                className="flex size-10 sm:size-9.5 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-xs font-bold text-primary shadow-xs hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-primary/50 active:scale-95 transition-all cursor-pointer shrink-0"
                 title="Sign in with Google"
               >
                 R
@@ -1828,17 +1812,17 @@ function ChatPage() {
         <div className="relative flex-1 min-h-0 w-full overflow-hidden">
           <Conversation className="h-full w-full">
             <ComposerScrollDetector onToggleHide={setIsComposerHidden} />
-            <ConversationContent className="mx-auto w-full max-w-3xl gap-4 sm:gap-6 px-2.5 sm:px-4 pt-4 sm:pt-8 pb-36 sm:pb-44">
+            <ConversationContent className="mx-auto w-full max-w-3xl gap-4 sm:gap-6 px-3 sm:px-4 pt-4 sm:pt-6 pb-32 sm:pb-40">
             {!hasMessages ? (
               <div className="flex flex-col items-center justify-center min-h-[50vh] text-center w-full my-auto px-4 animate-fade-in">
                 {/* Claude-Style Warm Center Sunburst Spark Logo */}
-                <div className="relative mb-6">
+                <div className="relative mb-5 sm:mb-6">
                   <div className="absolute -inset-3 rounded-full bg-primary/20 blur-xl animate-pulse" />
-                  <img src={logo} alt="rYuk.ai logo" width={52} height={52} className="relative size-13 drop-shadow-2xl animate-float-slow" />
+                  <img src={logo} alt="rYuk.ai logo" width={52} height={52} className="relative size-12 sm:size-13 drop-shadow-2xl animate-float-slow" />
                 </div>
 
                 {/* Claude-Style Dynamic Day Headline */}
-                <h1 className="font-serif text-2xl sm:text-4xl font-normal tracking-tight text-foreground/95">
+                <h1 className="font-serif text-xl sm:text-3xl md:text-4xl font-normal tracking-tight text-foreground/95 px-4">
                   {new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date())} session, {user?.displayName ? user.displayName.split(" ")[0] : "rYuk"}?
                 </h1>
               </div>
@@ -1983,19 +1967,19 @@ function ChatPage() {
 
         <div
           className={cn(
-            "absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-[#111110] via-[#111110]/95 to-transparent px-3 sm:px-4 pb-4 sm:pb-6 pt-6 sm:pt-8 transition-all duration-300 ease-out transform-gpu",
+            "absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-[#111110] via-[#111110]/95 to-transparent px-3 sm:px-4 pb-3 sm:pb-5 pt-4 sm:pt-6 transition-all duration-300 ease-out transform-gpu",
             isComposerHidden && "translate-y-full opacity-0 pointer-events-none",
           )}
         >
           <div className="mx-auto w-full max-w-2xl">
             {/* Claude-Style Top Upgrade Banner (if guest) */}
             {!user && (
-              <div className="mb-2.5 rounded-2xl border border-border/50 bg-[#1e1e1b]/90 backdrop-blur-md px-3.5 py-2.5 flex items-center justify-between shadow-xs animate-fade-in">
+              <div className="mb-2.5 rounded-2xl border border-border/50 bg-[#1e1e1b]/90 backdrop-blur-md px-3 sm:px-3.5 py-2 sm:py-2.5 flex items-center justify-between shadow-xs animate-fade-in">
                 <span className="text-xs font-semibold text-foreground">Get more with rYuk.ai Pro</span>
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
-                  className="rounded-full border border-border/60 bg-background px-3.5 py-1 text-xs font-bold text-foreground shadow-xs hover:bg-muted active:scale-95 transition-all cursor-pointer"
+                  className="rounded-full border border-border/60 bg-background px-3 sm:px-3.5 py-1 text-xs font-bold text-foreground shadow-xs hover:bg-muted active:scale-95 transition-all cursor-pointer"
                 >
                   Upgrade
                 </button>
@@ -2003,7 +1987,7 @@ function ChatPage() {
             )}
 
             {/* Claude-Style Card Composer */}
-            <div className="rounded-[28px] border border-border/60 bg-[#1a1a17]/95 backdrop-blur-xl p-3 shadow-2xl transition-all focus-within:border-primary/50 focus-within:shadow-glow">
+            <div className="rounded-2xl sm:rounded-[28px] border border-border/60 bg-[#1a1a17]/95 backdrop-blur-xl p-2.5 sm:p-3 shadow-2xl transition-all focus-within:border-primary/50 focus-within:shadow-glow">
               {attachedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-2 pb-2">
                   {attachedFiles.map((f) => (
@@ -2041,7 +2025,7 @@ function ChatPage() {
                       ? "Ask anything about the attached file(s)..."
                       : "Reply to rYuk.ai"
                 }
-                className="w-full resize-none bg-transparent px-2.5 text-sm sm:text-base outline-none placeholder:text-muted-foreground/60 leading-relaxed font-sans max-h-36 min-h-[44px]"
+                className="w-full resize-none bg-transparent px-2 sm:px-2.5 text-sm sm:text-base outline-none placeholder:text-muted-foreground/60 leading-relaxed font-sans max-h-36 min-h-[48px] py-1"
                 rows={1}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -2052,16 +2036,16 @@ function ChatPage() {
               />
 
               {/* Claude Bottom Tools Row */}
-              <div className="flex items-center justify-between gap-1.5 sm:gap-2 pt-2 px-0.5">
+              <div className="flex items-center justify-between gap-2 pt-2 px-0.5">
                 <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 overflow-x-auto no-scrollbar">
                   {/* Round Plus Button for Attachments & Plugins */}
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     title="Attach files / photos"
-                    className="flex size-8 sm:size-9 items-center justify-center rounded-full bg-secondary/80 text-foreground hover:bg-secondary active:scale-95 transition-all cursor-pointer shrink-0"
+                    className="flex size-9 sm:size-9 items-center justify-center rounded-full bg-secondary/80 text-foreground hover:bg-secondary active:scale-95 transition-all cursor-pointer shrink-0"
                   >
-                    <Plus className="size-4 stroke-[2.5]" />
+                    <Plus className="size-4.5 stroke-[2.5]" />
                   </button>
 
                   <input
@@ -2074,9 +2058,6 @@ function ChatPage() {
 
                   {/* Plugin Selector Pill */}
                   <PluginPicker value={detectedPlugin} onChange={setPlugin} />
-
-                  {/* Model Picker Pill */}
-                  <ModelPicker value={model} onChange={setModel} />
                 </div>
 
                 {/* Send Button */}
@@ -2085,7 +2066,7 @@ function ChatPage() {
                   disabled={!text.trim() && attachedFiles.length === 0 && !pending}
                   onClick={() => send(text, detectedPlugin)}
                   className={cn(
-                    "flex size-8 sm:size-9 items-center justify-center rounded-full transition-all cursor-pointer active:scale-95 shrink-0 ml-1.5",
+                    "flex size-9 sm:size-9 items-center justify-center rounded-full transition-all cursor-pointer active:scale-95 shrink-0 ml-1",
                     text.trim() || attachedFiles.length > 0 || pending
                       ? "bg-foreground text-background shadow-md hover:opacity-90"
                       : "bg-muted text-muted-foreground/40 cursor-not-allowed opacity-40"
@@ -2093,9 +2074,9 @@ function ChatPage() {
                   title="Send message"
                 >
                   {pending ? (
-                    <RefreshCw className="size-3.5 sm:size-4 animate-spin" />
+                    <RefreshCw className="size-4 animate-spin" />
                   ) : (
-                    <ArrowUp className="size-3.5 sm:size-4 stroke-[2.5]" />
+                    <ArrowUp className="size-4 stroke-[2.5]" />
                   )}
                 </button>
               </div>

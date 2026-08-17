@@ -634,8 +634,8 @@ export const Route = createFileRoute("/api/chat")({
 
             // Set temperature/top_p only if not a reasoning model
             if (!isReasoningModel) {
-              payload.temperature = taskParams.temperature;
-              payload.top_p = taskParams.top_p;
+              payload["temperature"] = taskParams.temperature;
+              payload["top_p"] = taskParams.top_p;
             }
 
             const upstream = await fetch(target.url, {

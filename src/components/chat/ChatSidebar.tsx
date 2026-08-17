@@ -63,7 +63,7 @@ export function ChatSidebar({ threads, activeId, onSelect, onDeleteThread, onNew
   return (
     <aside
       className={cn(
-        "flex h-full w-[84vw] max-w-[310px] md:w-72 shrink-0 flex-col border-r border-sidebar-border bg-[#141412] text-sidebar-foreground select-none",
+        "flex h-full w-[280px] max-w-[85vw] md:w-72 shrink-0 flex-col border-r border-sidebar-border bg-[#141412] text-sidebar-foreground select-none",
         className,
       )}
     >
