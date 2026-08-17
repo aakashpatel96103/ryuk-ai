@@ -18,6 +18,9 @@ const DEFAULT_SETTINGS: IntelligenceSettings = {
 };
 
 export function getIntelligenceSettings(): IntelligenceSettings {
+  if (typeof window === "undefined" || typeof localStorage === "undefined") {
+    return DEFAULT_SETTINGS;
+  }
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -33,6 +36,9 @@ export function getIntelligenceSettings(): IntelligenceSettings {
 export { getAdaptiveEnsembleConfig, getConfigurationExplanation } from "./adaptive-ensemble";
 
 export function saveIntelligenceSettings(settings: IntelligenceSettings): void {
+  if (typeof window === "undefined" || typeof localStorage === "undefined") {
+    return;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch (error) {
