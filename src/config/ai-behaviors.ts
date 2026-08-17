@@ -209,7 +209,7 @@ export function getBehaviorConfig(provider: AIProvider, personality?: ChatGPTPer
 
   return {
     provider,
-    personality,
+    ...(personality !== undefined ? { personality } : {}),
     systemPrompt,
     rules: commonRules,
   };

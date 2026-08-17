@@ -1915,7 +1915,7 @@ function ChatPage() {
                           <textarea
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
-                            className="w-full resize-none bg-transparent text-sm outline-none font-sans"
+                            className="w-full resize-none bg-transparent text-base outline-none font-sans"
                             rows={Math.max(2, editText.split("\n").length)}
                             autoFocus
                           />
@@ -2081,7 +2081,7 @@ function ChatPage() {
                       ? "What would you like to know about these files..."
                       : "Message rYuk Intelligence"
                 }
-                className="w-full resize-none bg-transparent px-2 sm:px-2.5 text-sm sm:text-base outline-none placeholder:text-muted-foreground/60 leading-relaxed font-sans max-h-36 min-h-[48px] py-1"
+                className="w-full resize-none bg-transparent px-2 sm:px-2.5 text-base outline-none placeholder:text-muted-foreground/60 leading-relaxed font-sans max-h-36 min-h-[48px] py-1"
                 rows={1}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
