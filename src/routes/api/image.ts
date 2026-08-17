@@ -5,14 +5,6 @@ type ImageRequestBody = {
   model?: string;
 };
 
-// Best OpenRouter native image generation models
-const OPENROUTER_IMAGE_MODELS = [
-  "google/gemini-2.5-flash-image",
-  "google/gemini-3.1-flash-image",
-  "openai/gpt-5-image-mini",
-  "google/gemini-3-pro-image",
-];
-
 function getOpenRouterKeys(): string[] {
   const keysStr = process.env["OPENROUTER_API_KEYS"] || process.env["OPENROUTER_API_KEY"] || "";
   return keysStr
@@ -21,76 +13,72 @@ function getOpenRouterKeys(): string[] {
     .filter((k) => Boolean(k) && k.startsWith("sk-or-"));
 }
 
-// 1. Generate via OpenRouter Native Image Models
-async function generateViaOpenRouter(prompt: string, specificModel?: string): Promise<{ b64: string; mediaType: string } | null> {
+// 1. AI Prompt Intelligence: Expand short user prompts into rich multi-subject cinematic prompts
+async function enhancePromptWithAI(rawPrompt: string): Promise<string> {
   const keys = getOpenRouterKeys();
-  if (keys.length === 0) return null;
-
-  const modelsToTry = specificModel && specificModel.includes("/")
-    ? [specificModel, ...OPENROUTER_IMAGE_MODELS]
-    : OPENROUTER_IMAGE_MODELS;
+  if (keys.length === 0 || rawPrompt.length > 250) return rawPrompt;
 
   for (const apiKey of keys) {
-    for (const model of modelsToTry) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "HTTP-Referer": "https://ryuk.ai",
+          "X-Title": "rYuk.ai Image Expander",
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a master AI image prompt engineer for FLUX. Transform the user's prompt into an ultra-detailed, photorealistic, cinematic image prompt. Crucial rule: Explicitly describe EVERY person, animal, object, action, camera angle, lighting, and texture mentioned in the prompt so NO subjects are missed. Output ONLY the raw prompt under 45 words without quotes or commentary.",
+            },
+            {
+              role: "user",
+              content: rawPrompt,
+            },
+          ],
+        }),
+      });
 
-      try {
-        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            "HTTP-Referer": "https://ryuk.ai",
-            "X-Title": "rYuk.ai Image Workspace",
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              {
-                role: "user",
-                content: prompt,
-              },
-            ],
-          }),
-        });
-
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data) {
-          console.warn(`[OpenRouter Image] ${model} failed (${res.status}):`, data?.error?.message || "unknown");
-          continue;
-        }
-
-        // Check for native multimodal image output array: message.images[0].image_url.url
-        const imgUrl: string | undefined = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-        if (imgUrl) {
-          const match = imgUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
-          if (match) {
-            return { mediaType: match[1], b64: match[2] };
-          }
-        }
-
-        // Check for direct b64_json or choice text data
-        const b64Direct = data.b64_json ?? data.data?.[0]?.b64_json;
-        if (b64Direct) {
-          return { mediaType: data.media_type || "image/png", b64: b64Direct };
-        }
-      } catch (err) {
-        console.warn(`[OpenRouter Image] Error with ${model}:`, err instanceof Error ? err.message : String(err));
-      } finally {
-        clearTimeout(timeoutId);
+      const data = await res.json().catch(() => null);
+      const enhanced = data?.choices?.[0]?.message?.content?.trim();
+      if (enhanced && enhanced.length > rawPrompt.length / 2) {
+        return enhanced;
       }
+    } catch {
+      // Continue to next key or return raw prompt
+    } finally {
+      clearTimeout(timer);
     }
   }
 
-  return null;
+  return rawPrompt;
 }
 
-// 2. High-speed FLUX Fallback Engine (1024x1024 photorealistic output)
-async function generateViaFluxFallback(prompt: string, model = "flux"): Promise<{ b64: string; mediaType: string }> {
+// 2. High-speed FLUX Photorealistic & Multi-Subject Generation Engine
+async function generateViaFlux(prompt: string, requestedModel?: string): Promise<{ b64: string; mediaType: string }> {
+  const promptLower = prompt.toLowerCase();
+  
+  let targetModel = "flux-realism";
+  if (requestedModel && requestedModel.includes("flux")) {
+    targetModel = requestedModel;
+  } else if (promptLower.includes("anime") || promptLower.includes("manga") || promptLower.includes("illustration")) {
+    targetModel = "flux-anime";
+  } else if (promptLower.includes("3d") || promptLower.includes("pixar") || promptLower.includes("clay")) {
+    targetModel = "flux-3d";
+  } else if (promptLower.includes("logo") || promptLower.includes("vector") || promptLower.includes("icon")) {
+    targetModel = "flux";
+  }
+
   const encPrompt = encodeURIComponent(prompt);
-  const url = `https://image.pollinations.ai/prompt/${encPrompt}?width=1024&height=1024&nologo=true&model=${encodeURIComponent(model)}`;
+  const url = `https://image.pollinations.ai/prompt/${encPrompt}?width=1024&height=1024&nologo=true&enhance=true&model=${targetModel}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 25000);
@@ -132,36 +120,29 @@ export const Route = createFileRoute("/api/image")({
           return Response.json({ error: "`prompt` is required." }, { status: 400 });
         }
 
-        const prompt = body.prompt.trim();
+        const rawPrompt = body.prompt.trim();
 
-        // Strategy 1: Best OpenRouter Models (google/gemini-2.5-flash-image, etc.)
+        // Step 1: AI Prompt Enhancement to ensure all subjects (e.g. Dog + Man + 4k details) are fully fleshed out
+        const detailedPrompt = await enhancePromptWithAI(rawPrompt);
+
+        // Step 2: Primary FLUX Realism / Pro Generation
         try {
-          const openRouterResult = await generateViaOpenRouter(prompt, body.model);
-          if (openRouterResult && openRouterResult.b64 && openRouterResult.b64.length > 500) {
-            return Response.json(openRouterResult);
+          const result = await generateViaFlux(detailedPrompt, body.model);
+          if (result.b64 && result.b64.length > 500) {
+            return Response.json(result);
           }
         } catch (err) {
-          console.warn("OpenRouter image generation fallback to FLUX:", err);
+          console.warn("Primary FLUX image error, trying standard flux fallback:", err);
         }
 
-        // Strategy 2: High-speed FLUX.1 Engine Fallback
+        // Step 3: Standard FLUX fallback
         try {
-          const fluxResult = await generateViaFluxFallback(prompt, "flux");
-          if (fluxResult.b64 && fluxResult.b64.length > 500) {
-            return Response.json(fluxResult);
+          const fallbackResult = await generateViaFlux(rawPrompt, "flux");
+          if (fallbackResult.b64 && fallbackResult.b64.length > 500) {
+            return Response.json(fallbackResult);
           }
         } catch (err) {
-          console.warn("Primary FLUX image generation warning:", err);
-        }
-
-        // Strategy 3: Turbo fallback
-        try {
-          const turboResult = await generateViaFluxFallback(prompt, "turbo");
-          if (turboResult.b64 && turboResult.b64.length > 500) {
-            return Response.json(turboResult);
-          }
-        } catch (err) {
-          console.error("Secondary Turbo image generation error:", err);
+          console.error("Secondary FLUX error:", err);
         }
 
         return Response.json(
