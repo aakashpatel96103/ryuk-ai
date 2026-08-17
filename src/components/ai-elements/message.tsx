@@ -568,25 +568,51 @@ export const CustomCodeRenderer = (props: any) => {
   );
 };
 
+function preprocessMathContent(content: any): any {
+  if (typeof content !== "string") return content;
+
+  return content
+    // Normalize LaTeX display blocks \[ ... \] -> $$ ... $$
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, eq) => `\n$$\n${eq.trim()}\n$$\n`)
+    // Normalize LaTeX inline blocks \( ... \) -> $ ... $
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, eq) => `$${eq.trim()}$`)
+    // Normalize bracketed expressions containing LaTeX commands: [ ... \frac ... ]
+    .replace(/\[\s*([^\]]*?\\[a-zA-Z]+[^\]]*?)\s*\]/g, (_, eq) => `$$${eq.trim()}$$`)
+    // Normalize isolated bracketed boxed: ( \boxed{...} ) or [ \boxed{...} ]
+    .replace(/\(\s*(\\boxed\{[^}]+\})\s*\)/g, (_, boxed) => `$${boxed}$`)
+    .replace(/\[\s*(\\boxed\{[^}]+\})\s*\]/g, (_, boxed) => `$$${boxed}$$`);
+}
+
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 const streamdownPlugins = { cjk, code, math, mermaid };
 
 export const MessageResponse = memo(
-  ({ className, controls = true, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        className
-      )}
-      controls={controls}
-      plugins={streamdownPlugins}
-      components={{
-        code: CustomCodeRenderer,
-      }}
-      {...props}
-    />
-  ),
+  ({ className, controls = true, children, ...props }: MessageResponseProps) => {
+    const processedChildren = useMemo(() => {
+      if (typeof children === "string") {
+        return preprocessMathContent(children);
+      }
+      return children;
+    }, [children]);
+
+    return (
+      <Streamdown
+        className={cn(
+          "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+          className
+        )}
+        controls={controls}
+        plugins={streamdownPlugins}
+        components={{
+          code: CustomCodeRenderer,
+        }}
+        {...props}
+      >
+        {processedChildren}
+      </Streamdown>
+    );
+  },
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
     nextProps.isAnimating === prevProps.isAnimating
