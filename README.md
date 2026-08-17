@@ -1,41 +1,88 @@
-# Lovable AI Studio
+# rYuk.ai — Professional Multi-Model AI Intelligence Workspace
 
-make a Ai web like "Chatgpt" "claude" "gemini", ui/ux or ill do my backend just make it designs in that the plugins only, default chat or "@create image" only one models or extra,,,,
+[![Deployment](https://img.shields.io/badge/Deployed-Vercel-black?logo=vercel)](https://ryuk-ai.vercel.app)
+[![Framework](https://img.shields.io/badge/Framework-TanStack%20Start%20%2B%20Vite-blue)](https://tanstack.com/start)
+[![Styling](https://img.shields.io/badge/Styling-Tailwind%20CSS%20v4-38bdf8?logo=tailwindcss)](https://tailwindcss.com)
 
-This project was built with [Lovable](https://lovable.dev).
+**rYuk.ai** is an enterprise-grade AI intelligence workspace combining dynamic multi-model routing, high-accuracy vision analysis, photorealistic FLUX image creation, live web search synthesis, interactive code sandboxing, and human-friendly step-by-step mathematical reasoning.
 
-## Build with Lovable
+---
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/6430ad5c-dfb9-4883-a480-5dcafab8c572).
+## ✨ Key Capabilities & Features
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+### 🧠 1. Dynamic Multi-Model Compute & Key Pool Failover
+- **Intelligent Routing**: Automatically analyzes task complexity (code, math, vision, creative, reasoning) and selects optimal models.
+- **Multi-Key Pool**: Supports multiple OpenRouter API keys (`OPENROUTER_API_KEY`, `OPENROUTER_API_KEYS`) with automatic rate-limit and credit quota failover.
+- **Top Models**: GPT-4o, Llama 3.3 70B, Qwen 2.5 72B, DeepSeek Chat, and free-tier fallback models.
 
-## Development
+### 🖼️ 2. Multimodal Vision & OCR
+- **GPT-4o Vision Priority**: Uploaded images are automatically routed to OpenAI's GPT-4o vision engine for detailed analysis, OCR, and diagram comprehension.
+- **Document & File Studio**: Upload PDFs, text files, and images for direct in-context Q&A.
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+### 🎨 3. Next-Gen Image Studio (FLUX-Realism Engine)
+- **1024x1024 Photorealistic Generation**: Built with the FLUX.1 architecture (`flux-realism`, `flux-anime`, `flux-3d`, `turbo`).
+- **AI Prompt Intelligence**: Automatically enriches short prompts into rich, multi-subject cinematic scenes ensuring all characters, objects, lighting, and textures are preserved.
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+### 🌐 4. Live Web Search Synthesis
+- Type `@web` or toggle the Web plugin to trigger real-time web browsing, source citation, and live reference image retrieval.
+
+### 💻 5. Code & Math Experience
+- **KaTeX Mathematical Typesetting**: Clean, human-readable step-by-step mathematical solutions without cluttered raw LaTeX macros.
+- **Live Code Runner & Sandboxes**: Integrated syntax-highlighted code blocks and interactive iframe sandboxes for HTML/JS/CSS.
+- **Mermaid Diagrams**: Visual flowcharts, architecture diagrams, and sequence flows rendered natively.
+
+### 📱 6. Mobile-Optimized & Fluid UI
+- **Zero Auto-Zoom Composer**: Viewport and input configurations engineered to eliminate mobile keyboard zoom glitches.
+- **Dual Visual Themes**: OLED Deep Dark Mode and Glass Transparency Mode.
+- **Cloud Sync**: Firebase Authentication (Google Sign-In) with automated multi-device chat history synchronization.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone & Install
+```bash
+git clone https://github.com/aakashpatel96103/ryuk-ai.git
+cd ryuk-ai
+npm install
 ```
 
-## Backend: OpenRouter
+### 2. Configure Environment Variables
+Create a `.env` file in the root directory:
+```env
+OPENROUTER_API_KEY=sk-or-v1-your-key-here,sk-or-v1-your-backup-key-here
+OPENROUTER_API_KEYS=sk-or-v1-your-key-here,sk-or-v1-your-backup-key-here
+```
 
-The chat and `@create image` plugin are wired to [OpenRouter](https://openrouter.ai) through two server
-routes — `src/routes/api/chat.ts` (streaming chat) and `src/routes/api/image.ts` (image generation).
-Your API key stays server-side; it's never sent to the browser.
+### 3. Run Locally
+```bash
+npm run dev
+```
+Open [http://localhost:8080](http://localhost:8080) in your browser.
 
-1. Copy `.env.example` to `.env`.
-2. Get a key from https://openrouter.ai/keys and set `OPENROUTER_API_KEY` in `.env`.
-3. `npm run dev`.
+---
 
-**Chat** uses `nvidia/nemotron-3-ultra-550b-a55b:free` (free). **Image generation** uses
-`google/gemini-2.5-flash-image` and is billed per image on your OpenRouter balance — chat is not.
-Only the default chat model and the `@create image` plugin are connected to real responses; the
-`@web`, `@code`, and `@doc` plugins currently route to the same chat model without special tool
-access — extending them would mean adding real web-search / code-execution / file-reading tools
-server-side.
+## 📦 Production Deployment
+
+Deploy directly to **Vercel**:
+```bash
+npx vercel --prod
+```
+
+Configure your environment variables (`OPENROUTER_API_KEY`, `OPENROUTER_API_KEYS`) in your **Vercel Project Settings > Environment Variables**.
+
+---
+
+## 🛠️ Technology Stack
+
+- **Runtime & Meta-Framework**: [TanStack Start](https://tanstack.com/start) with [Nitro](https://nitro.unjs.io/) and [Vite](https://vitejs.dev/)
+- **State & Routing**: TanStack Router & React Query
+- **Styling**: Tailwind CSS v4 & Lucide Icons
+- **Markdown & Math**: KaTeX, Streamdown, Remark, Shiki
+- **Database & Auth**: Google Firebase Auth & Cloud Firestore
+- **AI Compute**: OpenRouter Multi-Key API & FLUX Image Engine
+
+---
+
+## 📄 License
+MIT © [rYuk.ai](https://ryuk-ai.vercel.app)
