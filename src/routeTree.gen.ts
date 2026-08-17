@@ -10,12 +10,19 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as IndexProfessionalRouteImport } from './routes/index-professional'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ApiImageRouteImport } from './routes/api/image'
+import { Route as ApiModelsRouteImport } from './routes/api/models'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndexProfessionalRoute = IndexProfessionalRouteImport.update({
+  id: '/index-professional',
+  path: '/index-professional',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChatRoute = ApiChatRouteImport.update({
@@ -28,35 +35,55 @@ const ApiImageRoute = ApiImageRouteImport.update({
   path: '/api/image',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiModelsRoute = ApiModelsRouteImport.update({
+  id: '/api/models',
+  path: '/api/models',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/index-professional': typeof IndexProfessionalRoute
   '/api/chat': typeof ApiChatRoute
   '/api/image': typeof ApiImageRoute
+  '/api/models': typeof ApiModelsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/index-professional': typeof IndexProfessionalRoute
   '/api/chat': typeof ApiChatRoute
   '/api/image': typeof ApiImageRoute
+  '/api/models': typeof ApiModelsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/index-professional': typeof IndexProfessionalRoute
   '/api/chat': typeof ApiChatRoute
   '/api/image': typeof ApiImageRoute
+  '/api/models': typeof ApiModelsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/chat' | '/api/image'
+  fullPaths:
+    '/' | '/index-professional' | '/api/chat' | '/api/image' | '/api/models'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/chat' | '/api/image'
-  id: '__root__' | '/' | '/api/chat' | '/api/image'
+  to: '/' | '/index-professional' | '/api/chat' | '/api/image' | '/api/models'
+  id:
+    | '__root__'
+    | '/'
+    | '/index-professional'
+    | '/api/chat'
+    | '/api/image'
+    | '/api/models'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  IndexProfessionalRoute: typeof IndexProfessionalRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiImageRoute: typeof ApiImageRoute
+  ApiModelsRoute: typeof ApiModelsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -66,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/index-professional': {
+      id: '/index-professional'
+      path: '/index-professional'
+      fullPath: '/index-professional'
+      preLoaderRoute: typeof IndexProfessionalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/chat': {
@@ -82,13 +116,22 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiImageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/models': {
+      id: '/api/models'
+      path: '/api/models'
+      fullPath: '/api/models'
+      preLoaderRoute: typeof ApiModelsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  IndexProfessionalRoute: IndexProfessionalRoute,
   ApiChatRoute: ApiChatRoute,
   ApiImageRoute: ApiImageRoute,
+  ApiModelsRoute: ApiModelsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

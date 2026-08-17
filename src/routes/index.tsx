@@ -28,6 +28,8 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AIConfigurationPanel, useEnsembleConfiguration } from "@/components/AIConfigurationPanel";
+import { useIntelligenceSettings } from "@/hooks/use-intelligence-settings";
 
 import logo from "@/assets/ember-logo.png";
 import heroLanding from "@/assets/hero-landing.jpg";
@@ -111,17 +113,17 @@ function ComposerScrollDetector({ onToggleHide }: { onToggleHide: (hide: boolean
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "rYuk.ai — AI chat with plugins" },
+      { title: "rYuk.ai — Professional AI Intelligence Workspace" },
       {
         name: "description",
         content:
-          "rYuk.ai is an AI chat workspace: default conversation plus @create image, web search and code plugins, with switchable models.",
+          "Enterprise-grade AI workspace with ensemble compute, multi-model intelligence, and specialized capabilities for code, research, and content generation.",
       },
-      { property: "og:title", content: "rYuk.ai — AI chat with plugins" },
+      { property: "og:title", content: "rYuk.ai — Professional AI Intelligence Workspace" },
       {
         property: "og:description",
         content:
-          "A focused AI chat interface with plugin commands like @create image and multiple models.",
+          "Professional AI workspace featuring ensemble compute technology, multi-framework intelligence, and enterprise-grade performance.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -145,60 +147,64 @@ type ChatMessage = {
   feedback?: "like" | "dislike";
 };
 
-const SUGGESTIONS = [
+const PROFESSIONAL_PROMPTS = [
   {
     plugin: "code" as PluginId,
-    iconLabel: "Full-Stack Code",
+    iconLabel: "Software Engineering",
     category: "Development",
     cardClass: "card-code-gradient",
     badgeBg: "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30",
-    text: "Build a production-ready React + TypeScript component with async state",
+    text: "Architect a production-grade React application with TypeScript and state management",
   },
   {
     plugin: "chat" as PluginId,
-    iconLabel: "Deep Reasoning",
-    category: "Math & Logic",
+    iconLabel: "Advanced Analytics",
+    category: "Problem Solving",
     cardClass: "card-reasoning-gradient",
     badgeBg: "bg-purple-500/15 text-purple-400 border border-purple-500/30",
-    text: "Analyze algorithmic time complexity and optimize a distributed queue",
+    text: "Optimize algorithm performance and analyze distributed system architecture",
   },
   {
     plugin: "doc" as PluginId,
-    iconLabel: "Executive PDF",
-    category: "PDF Studio",
+    iconLabel: "Technical Documentation",
+    category: "Documentation",
     cardClass: "card-pdf-gradient",
     badgeBg: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
-    text: "Create a formal Technical Architecture proposal ready to export to PDF",
+    text: "Generate comprehensive technical specification with architecture diagrams",
   },
   {
     plugin: "image" as PluginId,
-    iconLabel: "Visuals & Art",
-    category: "Generative Art",
+    iconLabel: "Visual Content",
+    category: "Creative Studio",
     cardClass: "card-visuals-gradient",
     badgeBg: "bg-amber-500/15 text-amber-400 border border-amber-500/30",
-    text: "Generate an ultra-realistic futuristic cybernetic cityscape at sunset",
+    text: "Create professional presentation graphics and technical illustrations",
   },
   {
     plugin: "web" as PluginId,
-    iconLabel: "Deep Research",
-    category: "Intelligence",
+    iconLabel: "Market Intelligence",
+    category: "Research",
     cardClass: "card-research-gradient",
     badgeBg: "bg-sky-500/15 text-sky-400 border border-sky-500/30",
-    text: "Synthesize latest 2026 AI architecture standards and performance benchmarks",
+    text: "Conduct comprehensive market analysis with competitive intelligence insights",
   },
   {
     plugin: "chat" as PluginId,
-    iconLabel: "Executive Writer",
-    category: "Strategy",
+    iconLabel: "Strategic Planning",
+    category: "Business Strategy",
     cardClass: "card-write-gradient",
     badgeBg: "bg-orange-500/15 text-orange-400 border border-orange-500/30",
-    text: "Draft a high-impact product roadmap with risk matrix and milestones",
+    text: "Develop executive roadmap with risk assessment and success metrics",
   },
 ];
 
 function extractPiece(json: any): string | undefined {
   const choice = json.choices?.[0];
-  if (!choice) return undefined;
+  if (!choice) {
+    if (typeof json.content === "string" && json.content) return json.content;
+    if (typeof json.text === "string" && json.text) return json.text;
+    return undefined;
+  }
   const delta = choice.delta;
   if (delta) {
     // Skip reasoning/thinking tokens — these are internal chain-of-thought, not user-facing output
@@ -210,6 +216,7 @@ function extractPiece(json: any): string | undefined {
     if (typeof delta.content === "string" && delta.content) return delta.content;
     if (typeof delta.text === "string" && delta.text) return delta.text;
   }
+  if (choice.message?.content && typeof choice.message.content === "string") return choice.message.content;
   if (typeof choice.text === "string" && choice.text) return choice.text;
   return undefined;
 }
@@ -253,14 +260,14 @@ function ChatMessageActions({ text, createdAt, onRegenerate, isPending }: ChatMe
 
   const handleSpeak = () => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      toast.error("Text-to-speech is not supported in this browser.");
+      toast.error("Audio synthesis unavailable");
       return;
     }
 
     if (speaking) {
       window.speechSynthesis.cancel();
       setSpeaking(false);
-      toast.info("Audio playback stopped");
+      toast.info("Playback stopped");
       return;
     }
 
@@ -270,7 +277,7 @@ function ChatMessageActions({ text, createdAt, onRegenerate, isPending }: ChatMe
     utterance.onerror = () => setSpeaking(false);
     window.speechSynthesis.speak(utterance);
     setSpeaking(true);
-    toast.info("Reading response aloud...");
+    toast.info("Reading response");
   };
 
   const handleLike = () => {
@@ -278,7 +285,7 @@ function ChatMessageActions({ text, createdAt, onRegenerate, isPending }: ChatMe
       setFeedback(null);
     } else {
       setFeedback("like");
-      toast.success("Thanks for your feedback!");
+      toast.success("Feedback received");
     }
   };
 
@@ -287,7 +294,7 @@ function ChatMessageActions({ text, createdAt, onRegenerate, isPending }: ChatMe
       setFeedback(null);
     } else {
       setFeedback("dislike");
-      toast.info("Feedback recorded.");
+      toast.info("Feedback noted");
     }
   };
 
@@ -311,8 +318,8 @@ function ChatMessageActions({ text, createdAt, onRegenerate, isPending }: ChatMe
       </MessageAction>
 
       <MessageAction
-        label="Good response"
-        tooltip="Good response"
+        label="Helpful"
+        tooltip="Mark as helpful"
         onClick={handleLike}
         className={cn(feedback === "like" && "text-primary")}
       >
@@ -320,8 +327,8 @@ function ChatMessageActions({ text, createdAt, onRegenerate, isPending }: ChatMe
       </MessageAction>
 
       <MessageAction
-        label="Bad response"
-        tooltip="Bad response"
+        label="Not helpful"
+        tooltip="Mark as not helpful"
         onClick={handleDislike}
         className={cn(feedback === "dislike" && "text-destructive")}
       >
@@ -367,7 +374,7 @@ function UserMessageActions({ text, createdAt, onEdit, onResend, isPending }: Us
     if (!text) return;
     navigator.clipboard.writeText(text);
     setCopied(true);
-    toast.success("Prompt copied to clipboard");
+    toast.success("Message copied");
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -378,8 +385,8 @@ function UserMessageActions({ text, createdAt, onEdit, onResend, isPending }: Us
       </span>
 
       <MessageAction
-        label="Resend prompt"
-        tooltip="Resend prompt"
+        label="Resend"
+        tooltip="Resend message"
         onClick={onResend}
         disabled={isPending}
       >
@@ -387,8 +394,8 @@ function UserMessageActions({ text, createdAt, onEdit, onResend, isPending }: Us
       </MessageAction>
 
       <MessageAction
-        label="Edit prompt"
-        tooltip="Edit prompt"
+        label="Edit"
+        tooltip="Edit message"
         onClick={onEdit}
         disabled={isPending}
       >
@@ -396,8 +403,8 @@ function UserMessageActions({ text, createdAt, onEdit, onResend, isPending }: Us
       </MessageAction>
 
       <MessageAction
-        label={copied ? "Copied" : "Copy prompt"}
-        tooltip={copied ? "Copied!" : "Copy prompt"}
+        label={copied ? "Copied" : "Copy"}
+        tooltip={copied ? "Copied!" : "Copy message"}
         onClick={handleCopy}
       >
         {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
@@ -699,6 +706,10 @@ function ChatPage() {
   const [authLoading, setAuthLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // AI Intelligence and Ensemble Configuration
+  const { provider, personality } = useIntelligenceSettings();
+  const { ensembleConfig } = useEnsembleConfiguration();
 
   const handleGoogleSignIn = useCallback(async () => {
     try {
@@ -1029,7 +1040,16 @@ function ChatPage() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: apiMessages, model: openrouterId, plugin: usePlugin }),
+          body: JSON.stringify({
+            messages: apiMessages,
+            model: openrouterId,
+            plugin: usePlugin,
+            behavior: {
+              provider: provider,
+              personality: personality
+            },
+            hybridMode: ensembleConfig
+          }),
           signal: controller.signal,
         });
 
@@ -1038,80 +1058,103 @@ function ChatPage() {
           throw new Error(data?.error || `Request failed (${res.status})`);
         }
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
         let full = "";
-        let pendingUpdate = false;
-        let rafId: number | null = null;
+        const contentType = res.headers.get("content-type") || "";
 
-        const flushUpdate = () => {
-          if (!pendingUpdate) return;
-          pendingUpdate = false;
-          const snapshot = full;
+        if (contentType.includes("application/json")) {
+          const json = await res.json().catch(() => null);
+          if (json?.error) {
+            throw new Error(typeof json.error === "string" ? json.error : json.error.message || "Request failed");
+          }
+          const textContent = extractPiece(json) || json?.choices?.[0]?.message?.content || json?.choices?.[0]?.text || json?.content || "";
+          full = textContent;
           setMessagesByThread((prev) => ({
             ...prev,
             [targetThreadId]: (prev[targetThreadId] ?? []).map((m) =>
-              m.id === assistantId ? { ...m, text: snapshot } : m,
+              m.id === assistantId ? { ...m, text: full } : m,
             ),
           }));
-        };
+        } else {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = "";
+          let pendingUpdate = false;
+          let rafId: number | null = null;
 
-        const scheduleUpdate = () => {
-          pendingUpdate = true;
-          if (rafId === null) {
-            rafId = requestAnimationFrame(() => {
-              rafId = null;
-              flushUpdate();
-            });
-          }
-        };
+          const flushUpdate = () => {
+            if (!pendingUpdate) return;
+            pendingUpdate = false;
+            const snapshot = full;
+            setMessagesByThread((prev) => ({
+              ...prev,
+              [targetThreadId]: (prev[targetThreadId] ?? []).map((m) =>
+                m.id === assistantId ? { ...m, text: snapshot } : m,
+              ),
+            }));
+          };
 
-        while (!controller.signal.aborted) {
-          const { done, value: chunk } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(chunk, { stream: true });
-          const lines = buf.split("\n");
-          buf = lines.pop() ?? "";
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith("data:")) continue;
-            const payload = trimmed.slice(5).trim();
-            if (payload === "[DONE]") continue;
-            try {
-              const json = JSON.parse(payload);
-              const piece = extractPiece(json);
-              if (piece) {
-                full += piece;
-                scheduleUpdate();
-              }
-            } catch {
-              /* partial chunk, wait for more data */
+          const scheduleUpdate = () => {
+            pendingUpdate = true;
+            if (rafId === null) {
+              rafId = requestAnimationFrame(() => {
+                rafId = null;
+                flushUpdate();
+              });
             }
-          }
-        }
-        // Flush any remaining data in the SSE buffer
-        if (buf.trim()) {
-          const trimmed = buf.trim();
-          if (trimmed.startsWith("data:")) {
-            const payload = trimmed.slice(5).trim();
-            if (payload !== "[DONE]") {
+          };
+
+          while (!controller.signal.aborted) {
+            const { done, value: chunk } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(chunk, { stream: true });
+            const lines = buf.split("\n");
+            buf = lines.pop() ?? "";
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith("data:")) continue;
+              const payload = trimmed.slice(5).trim();
+              if (payload === "[DONE]") continue;
               try {
                 const json = JSON.parse(payload);
+                if (json.error) {
+                  throw new Error(typeof json.error === "string" ? json.error : json.error.message || "Stream error");
+                }
                 const piece = extractPiece(json);
                 if (piece) {
                   full += piece;
+                  scheduleUpdate();
                 }
-              } catch { /* incomplete */ }
+              } catch (e) {
+                if (e instanceof Error && (e.message.includes("credit") || e.message.includes("rate") || e.message.includes("Stream error"))) {
+                  throw e;
+                }
+                /* partial chunk, wait for more data */
+              }
             }
           }
-        }
+          // Flush any remaining data in the SSE buffer
+          if (buf.trim()) {
+            const trimmed = buf.trim();
+            if (trimmed.startsWith("data:")) {
+              const payload = trimmed.slice(5).trim();
+              if (payload !== "[DONE]") {
+                try {
+                  const json = JSON.parse(payload);
+                  const piece = extractPiece(json);
+                  if (piece) {
+                    full += piece;
+                  }
+                } catch { /* incomplete */ }
+              }
+            }
+          }
 
-        if (rafId !== null) {
-          cancelAnimationFrame(rafId);
-          rafId = null;
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          flushUpdate();
         }
-        flushUpdate();
 
         // Save the complete conversation (including AI response) to Firestore
         if (user) {
@@ -1127,10 +1170,20 @@ function ChatPage() {
         }
         setMessagesByThread((prev) => {
           let errMsg = err instanceof Error ? err.message : String(err);
-          if (errMsg.toLowerCase().includes("fetch") || errMsg.toLowerCase().includes("network")) {
-            errMsg += " (Please check your internet connection, verify the dev server is running, or reload the page.)";
+          let message = `Sorry, that request failed: ${errMsg}`;
+          const errLower = errMsg.toLowerCase();
+          if (
+            errLower.includes("rate limit") ||
+            errLower.includes("free-models-per-day") ||
+            errLower.includes("429") ||
+            errLower.includes("failed to respond") ||
+            errLower.includes("insufficient credits") ||
+            errLower.includes("402")
+          ) {
+            message = "⚠️ **Daily Free Quota Limit Reached**: The upstream free tier allowance has been temporarily reached for today. It will automatically reset in 24 hours.";
+          } else if (errLower.includes("fetch") || errLower.includes("network")) {
+            message = "Sorry, network request failed. Please verify your connection or reload the page.";
           }
-          const message = `Sorry, that request failed: ${errMsg}`;
           const list = prev[targetThreadId] ?? [];
           const existing = list.find((m) => m.id === assistantId);
           if (existing) {
@@ -1500,10 +1553,10 @@ function ChatPage() {
             <div className="lg:col-span-6 space-y-6 sm:space-y-7 max-w-xl mx-auto lg:mx-0 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
               <div className="space-y-2 sm:space-y-3">
                 <h1 className="font-display text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#f3f3f0] leading-[1.12]">
-                  Build, Reason & Create <span className="bg-gradient-to-r from-primary via-orange-400 to-amber-300 bg-clip-text text-transparent">Beyond Limits</span>
+                  Professional AI Intelligence <span className="bg-gradient-to-r from-primary via-orange-400 to-amber-300 bg-clip-text text-transparent">Workspace</span>
                 </h1>
                 <p className="text-sm sm:text-base text-[#9b9b94] leading-relaxed">
-                  Your intelligent AI workspace built for deep reasoning, full-stack coding, research, and creative workflows.
+                  Enterprise-grade AI platform with ensemble compute technology, multi-framework intelligence, and specialized capabilities for development, research, and strategic planning.
                 </p>
               </div>
 
@@ -1521,12 +1574,12 @@ function ChatPage() {
                     <path fill="#ffffff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                     <path fill="#ffffff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                   </svg>
-                  Continue with Google Directly
+                  Continue with Google
                 </Button>
 
                 <div className="flex items-center gap-2 sm:gap-3">
                   <div className="h-px flex-1 bg-[#282825]" />
-                  <span className="text-[10px] sm:text-[11px] font-mono text-[#73736c] uppercase tracking-wider">OR EMAIL AUTH</span>
+                  <span className="text-[10px] sm:text-[11px] font-mono text-[#73736c] uppercase tracking-wider">OR USE EMAIL</span>
                   <div className="h-px flex-1 bg-[#282825]" />
                 </div>
 
@@ -1725,6 +1778,9 @@ function ChatPage() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+            {/* AI Configuration Panel */}
+            <AIConfigurationPanel />
+
             {/* Transparency Mode Toggle */}
             <button
               type="button"
@@ -1975,13 +2031,13 @@ function ChatPage() {
             {/* Claude-Style Top Upgrade Banner (if guest) */}
             {!user && (
               <div className="mb-2.5 rounded-2xl border border-border/50 bg-[#1e1e1b]/90 backdrop-blur-md px-3 sm:px-3.5 py-2 sm:py-2.5 flex items-center justify-between shadow-xs animate-fade-in">
-                <span className="text-xs font-semibold text-foreground">Get more with rYuk.ai Pro</span>
+                <span className="text-xs font-semibold text-foreground">Experience Premium Intelligence</span>
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
                   className="rounded-full border border-border/60 bg-background px-3 sm:px-3.5 py-1 text-xs font-bold text-foreground shadow-xs hover:bg-muted active:scale-95 transition-all cursor-pointer"
                 >
-                  Upgrade
+                  Sign In
                 </button>
               </div>
             )}
@@ -2020,10 +2076,10 @@ function ChatPage() {
                 onChange={(e) => setText(e.target.value)}
                 placeholder={
                   detectedPlugin === "image"
-                    ? "Describe the image you want..."
+                    ? "Describe the visual content you need..."
                     : attachedFiles.length > 0
-                      ? "Ask anything about the attached file(s)..."
-                      : "Reply to rYuk.ai"
+                      ? "What would you like to know about these files..."
+                      : "Message rYuk Intelligence"
                 }
                 className="w-full resize-none bg-transparent px-2 sm:px-2.5 text-sm sm:text-base outline-none placeholder:text-muted-foreground/60 leading-relaxed font-sans max-h-36 min-h-[48px] py-1"
                 rows={1}

@@ -164,6 +164,7 @@ export function ModelPicker({ value, onChange }: Props) {
                 onSelect={() => onChange(m.id)}
                 className="items-start gap-2.5 p-2.5 rounded-lg cursor-pointer hover:bg-muted/40 focus:bg-muted/40"
               >
+                <span className="mt-1 flex h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2 text-sm font-semibold">
                     {m.name}

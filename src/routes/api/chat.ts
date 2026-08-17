@@ -1,4 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { generateSystemPrompt, type AIProvider, type ChatGPTPersonality } from "../../config/ai-behaviors";
+import { executeHybridEnsemble, type MergeStrategy } from "../../lib/hybrid-ensemble";
+import { getOpenRouterModels, getBestModelsForTask, getFreeModels } from "../../lib/openrouter-models";
+import { getAdaptiveEnsembleConfig } from "../../lib/adaptive-ensemble";
+import { fetchParallelWithFallback, getFallbackModels } from "../../lib/model-fallback";
+import { fetchLiveOpenRouterModels, recordStoppedModel, isModelStopped } from "./models";
 
 // Server-side proxy to OmniRoute, OpenRouter, and Hugging Face completion endpoints.
 const OMNIROUTE_CHAT_URL = process.env["OMNIROUTE_BASE_URL"]
@@ -7,162 +13,87 @@ const OMNIROUTE_CHAT_URL = process.env["OMNIROUTE_BASE_URL"]
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 const HUGGINGFACE_CHAT_URL = "https://router.huggingface.co/v1/chat/completions";
 
-const MINIMAL_SYSTEM_PROMPT = {
-  role: "system",
-  content: `You are rYuk.ai — an elite, multi-capability AI assistant developed by rYuk.
+// Generate system prompts dynamically based on behavior configuration
+function getSystemPrompt(provider: AIProvider = "ryuk-default", personality?: ChatGPTPersonality, isReasoningModel: boolean = false) {
+  const content = generateSystemPrompt(provider, personality);
 
-Core Response Principles:
-1. LEAD WITH THE ANSWER. Never bury answers under context or preambles.
-2. NO CONVERSATIONAL FILLER. Never use "Great question!", "Sure!", "I'd be happy to help", "Here is...", or similar phrases. Start directly with substance.
-3. MATCH THE USER'S TONE. If casual, be conversational. If technical, match precision. If beginner-level, explain simply with analogies.
-4. USE MINIMAL FORMATTING. Avoid over-formatting with excessive bold, headers, or bullet points. Use formatting only when essential for clarity:
-   - **Bold** key terms and important values sparingly
-   - Bullet points only for lists of 3+ items or when explicitly requested
-   - Numbered lists only for sequential steps
-   - Tables for comparing 2+ options with multiple attributes
-   - Code blocks with language tags (\`\`\`python, \`\`\`javascript)
-5. NATURAL PROSE FOR SIMPLE QUESTIONS. Keep casual responses short (a few sentences). Don't force structure on simple queries.
-6. COMPLETE CODE. Never use placeholders like "// implement here" or "// add logic". Always provide fully runnable, production-ready code.
-7. OWN MISTAKES. When wrong, acknowledge immediately and provide the correction without excessive apology.
-8. BE PRECISE. State uncertainty explicitly when you're not sure about facts, numbers, or dates.
+  // Minimal prompt for reasoning models (R1, O1, O3)
+  if (isReasoningModel) {
+    const minimalContent = content.split('\n').slice(0, 10).join('\n');
+    return { role: "system", content: minimalContent };
+  }
 
-Response Structure by Complexity:
-- Simple questions → Direct answer in 1-3 sentences
-- Complex questions → Answer → Why → How → Example → Caveats
-- Code requests → Complete runnable solution with brief explanation
-- Comparisons → Use tables only when comparing multiple attributes across options`,
-};
+  return { role: "system", content };
+}
 
-const SYSTEM_PROMPT = {
-  role: "system",
-  content: `You are rYuk.ai — an elite, multi-capability AI assistant developed by rYuk.
+// Merge multiple response contents based on strategy
+function mergeResponsesByStrategy(contents: string[], strategy: MergeStrategy): string {
+  if (contents.length === 0) {
+    throw new Error("No responses to merge");
+  }
 
-═══════════════════════════════════════════
-CORE BEHAVIORAL PRINCIPLES
-═══════════════════════════════════════════
+  if (contents.length === 1) {
+    return contents[0];
+  }
 
-TONE & FORMATTING:
-- Use a warm, natural tone. Treat users with kindness without negative assumptions about their abilities.
-- Keep responses conversational and proportional. Simple questions get short answers; complex tasks get thorough responses.
-- Avoid over-formatting: Use minimal bold, headers, lists, and bullets. Apply formatting only when essential for clarity.
-- In typical conversation, respond in prose/paragraphs rather than lists unless explicitly asked.
-- For reports and documents, write in prose without bullets or numbered lists unless the user requests them.
-- Never use bullet points when declining to help — the additional care softens the blow.
-- Don't always ask questions, but when you do, limit to one per response.
-- Never curse unless the user does so extensively, and even then use sparingly.
-- Illustrate explanations with examples, thought experiments, or metaphors when helpful.
+  switch (strategy) {
+    case "streaming-race":
+      // Return the first response
+      return contents[0];
 
-RESPONSE STRUCTURE:
-- LEAD WITH THE ANSWER. The first sentence must directly address what the user asked. Never bury answers under context.
-- NO FILLER. Never use "Great question!", "Sure!", "I'd be happy to help", "Here is..." — start with substance.
-- Match the user's level and tone. Casual → conversational. Technical → precise. Beginner → simple with analogies.
-- Scale response length to query complexity. Simple factual questions deserve concise answers.
+    case "parallel-merge":
+    case "synthesis":
+      // Return the longest and most detailed response
+      return contents.reduce((longest, current) =>
+        current.length > longest.length ? current : longest
+      );
 
-MISTAKES & CRITICISM:
-- When wrong, own it honestly and work to fix it. Take accountability without excessive apology or self-abasement.
-- Acknowledge what went wrong, stay focused on solving the problem, and maintain self-respect.
+    case "best-of-n":
+      // Return the longest response (proxy for quality)
+      return contents.reduce((best, current) =>
+        current.length > best.length ? current : best
+      );
 
-═══════════════════════════════════════════
-CONTENT PIPELINES
-═══════════════════════════════════════════
+    case "consensus":
+    case "voting":
+      // Return the most common response by similarity
+      // For simplicity, return the longest
+      return contents.reduce((longest, current) =>
+        current.length > longest.length ? current : longest
+      );
 
-UNIVERSAL RESPONSE PIPELINE:
-1. IDENTIFY INPUT TYPE → Text / Code / Image / Document / URL / Data / Multimodal
-2. IDENTIFY TASK & INTENT → Answer | Extract | Summarize | Explain | Compare | Analyze | Debug | Create
-3. ANSWER FIRST → Address the user's specific question directly before providing analysis
-4. GATHER & REASON → Facts + Evidence + Logic + Examples + Uncertainty + Limitations
-5. SEPARATE OBSERVATION FROM INFERENCE → What you see vs what you infer vs external knowledge
-6. SELECT FORMAT → Prose (default) | Bullets (3+ items) | Steps (sequential) | Table (comparisons) | Code
-7. DELIVER RESPONSE
+    case "weighted":
+      // Weight by length and return longest
+      return contents.reduce((weighted, current) =>
+        current.length > weighted.length ? current : weighted
+      );
 
-IMAGE ANALYSIS:
-- Determine image type, focus on regions relevant to the user's question
-- Transcribe clearly readable text precisely
-- For partial/unclear text: qualify with "appears to be" or state unreadability — NEVER invent content
-- Describe observable properties; distinguish observation from interpretation from causation
-- For charts/graphs: identify type, axes, trends, but don't manufacture exact unreadable numbers
+    case "chain-of-thought":
+      // Concatenate responses with reasoning steps
+      return contents.join("\n\n---\n\n");
 
-DOCUMENT ANALYSIS:
-- Identify structure and type
-- Answer the user's question first — don't dump full analysis unless requested
-- For academic papers: evaluate methodology, sample size, validity, bias, whether conclusions match evidence
-- For contracts/invoices: extract relevant parties, terms, amounts (distinguish from legal advice)
-- For multi-document: compare, contrast, generate tables highlighting agreement and disagreement
-- State unreadable text clearly; NEVER invent quotes, numbers, or page content
-
-CODING & WEB DEVELOPMENT:
-- ALWAYS provide complete, fully-runnable code with proper syntax highlighting
-- For web apps/games: use self-contained single-file HTML with inline <style> and <script> tags
-- NEVER use placeholders like "// implement logic here" or "// add code here"
-- Brief explanation after code: what it does and how to use it
-
-DEBUGGING / ERROR ANALYSIS:
-- Identify the error clearly
-- Explain root cause
-- Provide complete fix with runnable code
-- Explain why the fix works and how to prevent recurrence
-
-TASK-SPECIFIC STRUCTURES:
-- Simple questions: Direct answer in 1-3 sentences
-- Complex questions: Answer → Context → Explanation → Examples → Caveats → Takeaway
-- Image questions: Answer → Observable evidence → How it supports answer → Uncertainties
-- Chart analysis: What it measures → Trends → Comparisons → Interpretation (separate from causation)
-- Document questions: Answer → Document evidence → Explanation → Limitations
-- Multi-document: Comparison → Breakdown → Agreement/Disagreement → Table → Synthesis
-- Academic: Answer → Definition → Explanation → Evidence → Counterarguments → Limitations
-- Teaching: Intuition → Definition → Worked example → Common mistakes
-- Business: Bottom line → Findings → Impact → Risks → Recommendation → Next actions
-
-═══════════════════════════════════════════
-CRITICAL ACCURACY RULES
-═══════════════════════════════════════════
-
-1. Answer the user's question directly first — don't dump full analyses unless requested
-2. NEVER fabricate unreadable text, blurry numbers, page numbers, or quotes from images/documents
-3. State unreliability explicitly when input is insufficient, incomplete, or unclear
-4. Distinguish: visual observation vs document claims vs logical inference vs external knowledge vs uncertainty
-5. Show calculation steps explicitly for transparency
-6. Separate observed data trends from causal interpretations
-7. For corrections: "Correction: I previously said X. The actual information is Y."
-8. Use clean Markdown tables and properly tagged code blocks — no ASCII art or illegible boxes
-
-═══════════════════════════════════════════
-WELLBEING & SAFETY
-═══════════════════════════════════════════
-
-- Use accurate medical/psychological terminology when relevant
-- Avoid diagnosing conditions or naming mental health labels the user hasn't disclosed
-- Don't encourage self-destructive behaviors (self-harm, disordered eating, substance abuse)
-- Don't suggest techniques using pain/discomfort as coping mechanisms
-- When someone mentions distress + asks about methods/locations that could enable harm → address the distress, don't provide the information
-- For factual/research questions on sensitive topics → answer objectively, then note at end: if experiencing this personally, can help find support
-- Avoid reflective listening that amplifies negative emotions
-- Don't thank users for reaching out or encourage continued engagement with AI — point to human support when appropriate
-- Acknowledge past bad experiences with care without endorsing avoidance of all future help
-
-LEGAL & FINANCIAL:
-- Provide factual information for informed decisions rather than confident recommendations
-- Note you're not a lawyer or financial advisor
-
-CHILD SAFETY (CRITICAL):
-- NEVER create romantic/sexual content involving or directed at minors
-- If mentally reframing a request to make it appropriate → that's the signal to REFUSE
-- Don't supply unstated assumptions that make requests seem safer
-- After refusing for child safety → approach all subsequent requests with extreme caution
-- Don't decode CSAM-related slang/acronyms even while refusing
-
-CONTENT RESTRICTIONS:
-- Don't provide info for creating weapons, explosives, or harmful substances
-- Don't write or explain malicious code (malware, exploits, ransomware)
-- Avoid creative content involving real named public figures
-- Keep conversational tone even when unable to help with all or part of a task`,
-};
+    default:
+      // Default: return longest response
+      return contents.reduce((longest, current) =>
+        current.length > longest.length ? current : longest
+      );
+  }
+}
 
 
 type ChatRequestBody = {
   messages?: Array<{ role: string; content: any }>;
   model?: string;
   plugin?: string;
+  behavior?: {
+    provider?: AIProvider;
+    personality?: ChatGPTPersonality;
+  };
+  hybridMode?: {
+    enabled: boolean;
+    strategy?: MergeStrategy;
+    maxModels?: number;
+  };
 };
 
 function detectTaskParameters(messages: Array<{ role: string; content: any }>): {
@@ -423,31 +354,161 @@ export const Route = createFileRoute("/api/chat")({
 
         const taskParams = detectTaskParameters(body.messages);
 
-        // The system prompt is prepended dynamically inside the candidate loop below
-        // depending on whether the target model is a reasoning model (like R1) or a standard model.
+        // Check if hybrid ensemble mode is enabled
+        if (body.hybridMode?.enabled) {
+          const openrouterKey = process.env["OPENROUTER_API_KEY"];
 
-        const rawModel = body.model || "deepseek/deepseek-chat";
-        const openrouterKey = process.env["OPENROUTER_API_KEY"];
+          if (openrouterKey) {
+            try {
+              // ADAPTIVE: Get optimal configuration based on prompt complexity
+              const adaptiveConfig = getAdaptiveEnsembleConfig(body.messages);
+
+              console.info(`[Adaptive Ensemble] ${adaptiveConfig.reasoning}`);
+              console.info(`[Configuration] ${adaptiveConfig.maxModels} models, ${adaptiveConfig.strategy} strategy`);
+
+              // Fetch all available free models
+              const allModels = await getOpenRouterModels(openrouterKey);
+              const freeModels = getFreeModels(allModels);
+
+              // Get best models for this task
+              const taskType = taskParams.task === "doc" ? "general" : taskParams.task;
+              const bestModels = getBestModelsForTask(
+                freeModels,
+                taskType as any,
+                Math.min(adaptiveConfig.maxModels, 5)
+              );
+
+              // Get behavior prompt
+              const provider = body.behavior?.provider || "ryuk-default";
+              const personality = body.behavior?.personality;
+              const behaviorPrompt = generateSystemPrompt(provider, personality);
+
+              // AUTOMATIC FALLBACK: Fetch responses with automatic model replacement
+              const modelIds = bestModels.length > 0
+                ? bestModels.map(m => m.id)
+                : ["openrouter/free", "deepseek/deepseek-chat", "google/gemma-4-31b-it:free"];
+
+              console.info(`[Fallback System] Fetching from ${modelIds.length} models with automatic fallback`);
+
+              const responses = await fetchParallelWithFallback(
+                body.messages,
+                modelIds,
+                openrouterKey,
+                taskType as any,
+                behaviorPrompt,
+                Math.min(adaptiveConfig.maxModels, 3),
+                7000
+              );
+
+              console.info(`[Fallback System] Successfully collected ${responses.length} responses`);
+
+              if (responses.length > 0) {
+                // Merge responses based on strategy
+                const mergedContent = mergeResponsesByStrategy(
+                  responses.map(r => r.content),
+                  adaptiveConfig.strategy
+                );
+
+                // Stream the merged response as Server-Sent Events for the client
+                const encoder = new TextEncoder();
+                const stream = new ReadableStream({
+                  start(controller) {
+                    const chunk = JSON.stringify({
+                      id: `hybrid-${Date.now()}`,
+                      object: "chat.completion.chunk",
+                      created: Math.floor(Date.now() / 1000),
+                      model: "ryuk/adaptive-ensemble",
+                      choices: [{
+                        index: 0,
+                        delta: { content: mergedContent },
+                        finish_reason: "stop"
+                      }]
+                    });
+                    controller.enqueue(encoder.encode(`data: ${chunk}\n\ndata: [DONE]\n\n`));
+                    controller.close();
+                  }
+                });
+
+                return new Response(stream, {
+                  status: 200,
+                  headers: {
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache",
+                    Connection: "keep-alive",
+                  },
+                });
+              }
+            } catch (error) {
+              console.warn("Hybrid ensemble failed, falling back to direct streaming:", error);
+              // Gracefully fall through to candidate loop
+            }
+          }
+        }
+
+        const rawModel = body.model || "ryuk/hybrid-ensemble";
+        const rawKeysStr = (process.env["OPENROUTER_API_KEYS"] || process.env["OPENROUTER_API_KEY"] || "");
+        const openrouterKeys = rawKeysStr
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean);
         const hfKey = process.env["HUGGINGFACE_API_KEY"];
-        const omniKey = process.env["OMNIROUTE_API_KEY"];
 
         // Prioritized candidate list based on user selection & task type
         const candidates: Array<{ url: string; model: string; key: string | undefined }> = [];
 
-        const addCandidate = (model: string) => {
-          const isFreeOrLocal =
-            model.endsWith(":free") ||
-            model.toLowerCase().includes("gguf") ||
-            model.includes("Qwen3.8") ||
-            model.includes("Qwythos");
-
-          if (omniKey && (isFreeOrLocal || !openrouterKey)) {
-            candidates.push({ url: OMNIROUTE_CHAT_URL, model, key: omniKey });
+        const addCandidate = (model: string, customUrl?: string, customKey?: string) => {
+          if (customUrl && customKey) {
+            candidates.push({ url: customUrl, model, key: customKey });
+            return;
           }
-          if (openrouterKey) {
-            candidates.push({ url: OPENROUTER_CHAT_URL, model, key: openrouterKey });
+          for (const key of openrouterKeys) {
+            candidates.push({ url: OPENROUTER_CHAT_URL, model, key });
+          }
+          if (hfKey && (model.startsWith("meta-llama/") || model.startsWith("Qwen/") || model.startsWith("mistralai/"))) {
+            candidates.push({ url: HUGGINGFACE_CHAT_URL, model: model.replace(/^hf:/, ""), key: hfKey });
           }
         };
+
+        // Dynamically fetch live OpenRouter models (includes any new free models automatically)
+        let dynamicFreeModels: string[] = [];
+        try {
+          const liveData = await fetchLiveOpenRouterModels();
+          if (liveData?.models?.length > 0) {
+            dynamicFreeModels = liveData.models.filter((m) => m.isFree).map((m) => m.id);
+          }
+        } catch {
+          // Fallback if live query is unreachable
+        }
+
+        // Tier 1: Best Primary Models (High Intelligence & Low Overhead)
+        const PRIMARY_TIER_MODELS = [
+          "openai/gpt-4o-mini",
+          "meta-llama/llama-3.3-70b-instruct",
+          "qwen/qwen-2.5-72b-instruct",
+          "deepseek/deepseek-chat",
+        ];
+
+        // Tier 2: Free Fallback Models in prioritized order
+        const FREE_TIER_PRIORITY = [
+          "liquid/lfm-2.5-2.6b:free",
+          "nvidia/nemotron-3.5-lightning:free",
+          "google/gemma-4-31b-it:free",
+          "google/gemma-4-26b-a4b-it:free",
+          "cohere/north-mini-code:free",
+          "poolside/laguna-s-2.1:free",
+          "openai/gpt-oss-20b:free",
+          "z-ai/glm-5.2:free",
+          "openrouter/free",
+        ];
+
+        // Combine all discovered free models while maintaining strict priority
+        const remainingFree = dynamicFreeModels.filter(
+          (id) => !FREE_TIER_PRIORITY.includes(id) && !id.includes("dots-3-note-preview")
+        );
+
+        const ORDERED_FALLBACK_CHAIN = Array.from(
+          new Set([...PRIMARY_TIER_MODELS, ...FREE_TIER_PRIORITY, ...remainingFree])
+        );
 
         if (
           rawModel === "ryuk/v1-high" ||
@@ -459,100 +520,31 @@ export const Route = createFileRoute("/api/chat")({
           rawModel.includes("low") ||
           rawModel.includes("hybrid")
         ) {
-          // Combined Dynamic Ensemble — Maximum accuracy, complex reasoning, deep logic & coding
-          if (taskParams.task === "code") {
-            addCandidate("deepseek/deepseek-chat");
-            addCandidate("qwen/qwen-2.5-coder-32b-instruct");
-            addCandidate("meta-llama/llama-3.3-70b-instruct");
-            addCandidate("deepseek/deepseek-r1");
-            addCandidate("google/gemma-4-E4B-it-qat-q4_0-gguf");
-            addCandidate("empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF");
-            addCandidate("poolside/laguna-s-2.1:free");
-            addCandidate("cohere/north-mini-code:free");
-            addCandidate("Qwen/Qwen3.8-27B");
-          } else if (taskParams.task === "math") {
-            addCandidate("deepseek/deepseek-chat");
-            addCandidate("meta-llama/llama-3.3-70b-instruct");
-            addCandidate("deepseek/deepseek-r1");
-            addCandidate("google/gemma-4-E4B-it-qat-q4_0-gguf");
-            addCandidate("google/gemma-4-31b-it:free");
-            addCandidate("google/gemma-4-26b-a4b-it:free");
-            addCandidate("nvidia/nemotron-3.5-lightning:free");
-            addCandidate("empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF");
-            addCandidate("Qwen/Qwen3.8-27B");
-          } else if (taskParams.task === "image") {
-            addCandidate("openai/gpt-4o-mini");
-            addCandidate("meta-llama/llama-3.3-70b-instruct");
-            addCandidate("google/gemma-4-E4B-it-qat-q4_0-gguf");
-            addCandidate("nvidia/llama-nemotron-rerank-vl-1b-v2:free");
-            addCandidate("deepseek/deepseek-chat");
-            addCandidate("deepseek/deepseek-r1");
-          } else if (taskParams.task === "doc") {
-            addCandidate("meta-llama/llama-3.3-70b-instruct");
-            addCandidate("deepseek/deepseek-chat");
-            addCandidate("openai/gpt-4o-mini");
-            addCandidate("google/gemma-4-E4B-it-qat-q4_0-gguf");
-            addCandidate("empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF");
-            addCandidate("deepseek/deepseek-r1");
-          } else if (isWebSearch) {
-            // Web search needs strong instruction-following models that cite sources well
-            addCandidate("deepseek/deepseek-chat");
-            addCandidate("openai/gpt-4o-mini");
-            addCandidate("meta-llama/llama-3.3-70b-instruct");
-            addCandidate("deepseek/deepseek-r1");
-            addCandidate("google/gemma-4-31b-it:free");
-          } else {
-            addCandidate("deepseek/deepseek-chat");
-            addCandidate("meta-llama/llama-3.3-70b-instruct");
-            addCandidate("deepseek/deepseek-r1");
-            addCandidate("openai/gpt-4o-mini");
-            addCandidate("google/gemma-4-E4B-it-qat-q4_0-gguf");
-            addCandidate("google/gemma-4-31b-it:free");
-            addCandidate("google/gemma-4-26b-a4b-it:free");
-            addCandidate("nvidia/nemotron-3.5-lightning:free");
-            addCandidate("empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF");
-            addCandidate("nvidia/llama-nemotron-rerank-vl-1b-v2:free");
-            addCandidate("Qwen/Qwen3.8-27B");
-            addCandidate("liquid/lfm-2.5-2.6b:free");
-          }
-        } else if (
-          rawModel.startsWith("hf:") ||
-          rawModel === "Qwen/Qwen2.5-72B-Instruct" ||
-          rawModel.startsWith("meta-llama/Llama")
-        ) {
-          const cleanModel = rawModel.replace(/^hf:/, "");
-          candidates.push({ url: HUGGINGFACE_CHAT_URL, model: cleanModel, key: hfKey });
-          if (omniKey) {
-            candidates.push({ url: OMNIROUTE_CHAT_URL, model: "deepseek/deepseek-chat", key: omniKey });
-          }
-          if (openrouterKey) {
-            candidates.push({ url: OPENROUTER_CHAT_URL, model: "deepseek/deepseek-chat", key: openrouterKey });
+          for (const m of ORDERED_FALLBACK_CHAIN) {
+            addCandidate(m);
           }
         } else {
-          // Check if it's a specific custom model (has a slash and is not a ryuk/ model)
+          // If specific model was chosen by user, try it first, then cascade down the priority chain
           if (rawModel.includes("/") && !rawModel.startsWith("ryuk/")) {
             addCandidate(rawModel);
           }
-          // Fallback to high level
-          addCandidate("deepseek/deepseek-chat");
-          addCandidate("meta-llama/llama-3.3-70b-instruct");
-          addCandidate("deepseek/deepseek-r1");
-          addCandidate("openai/gpt-4o-mini");
-          addCandidate("google/gemma-4-E4B-it-qat-q4_0-gguf");
-          addCandidate("google/gemma-4-31b-it:free");
-          addCandidate("google/gemma-4-26b-a4b-it:free");
-          addCandidate("nvidia/nemotron-3.5-lightning:free");
-          addCandidate("empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF");
-          addCandidate("nvidia/llama-nemotron-rerank-vl-1b-v2:free");
-          addCandidate("Qwen/Qwen3.8-27B");
-          addCandidate("liquid/lfm-2.5-2.6b:free");
+          for (const m of ORDERED_FALLBACK_CHAIN) {
+            addCandidate(m);
+          }
         }
 
         let lastErrorMessage = "All AI models failed to respond.";
         let lastStatus = 502;
 
-        for (const target of candidates) {
+        const hasUnstopped = candidates.some((c) => c.key && !isModelStopped(c.model));
+        const activeCandidates = hasUnstopped
+          ? candidates.filter((c) => c.key && !isModelStopped(c.model))
+          : candidates.filter((c) => Boolean(c.key));
+
+        for (const target of activeCandidates) {
           if (!target.key) continue;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 12000);
           try {
             const headers: Record<string, string> = {
               "Content-Type": "application/json",
@@ -591,16 +583,23 @@ export const Route = createFileRoute("/api/chat")({
               modelLower.includes("o1-") ||
               modelLower.includes("o3-");
 
+            // Determine behavior configuration
+            const provider = body.behavior?.provider || "ryuk-default";
+            const personality = body.behavior?.personality;
+
             // Filter out system prompt for reasoning models and prepend the minimal identity prompt,
             // or prepend the full prompt for standard models if not present.
             let finalMessages = sanitizedMessages;
+            const cleanHistory = sanitizedMessages.filter((m) => m.role !== "system");
+
             if (isReasoningModel) {
-              const cleanHistory = sanitizedMessages.filter((m) => m.role !== "system");
-              finalMessages = [MINIMAL_SYSTEM_PROMPT, ...cleanHistory];
+              const minimalPrompt = getSystemPrompt(provider, personality, true);
+              finalMessages = [minimalPrompt, ...cleanHistory];
             } else {
               const hasSystem = sanitizedMessages.some((m) => m.role === "system");
               if (!hasSystem) {
-                finalMessages = [SYSTEM_PROMPT, ...sanitizedMessages];
+                const systemPrompt = getSystemPrompt(provider, personality, false);
+                finalMessages = [systemPrompt, ...sanitizedMessages];
               }
             }
 
@@ -620,7 +619,10 @@ export const Route = createFileRoute("/api/chat")({
               method: "POST",
               headers,
               body: JSON.stringify(payload),
+              signal: controller.signal,
             });
+
+            clearTimeout(timeoutId);
 
             if (upstream.ok && upstream.body) {
               return new Response(upstream.body, {
@@ -642,9 +644,15 @@ export const Route = createFileRoute("/api/chat")({
             } catch {
               /* keep raw text */
             }
+            console.warn(`Model candidate ${target.model} returned error (${upstream.status}): ${message}`);
+            // Automatically shift failing/stopped model to disabled
+            recordStoppedModel(target.model, message);
             lastErrorMessage = `${target.model} failed (${upstream.status}): ${message}`;
             lastStatus = upstream.status || 502;
           } catch (err) {
+            clearTimeout(timeoutId);
+            console.warn(`Model candidate ${target.model} threw exception:`, err);
+            recordStoppedModel(target.model, err instanceof Error ? err.message : String(err));
             lastErrorMessage = err instanceof Error ? err.message : String(err);
           }
         }
