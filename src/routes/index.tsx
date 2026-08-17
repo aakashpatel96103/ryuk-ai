@@ -1759,11 +1759,12 @@ function ChatPage() {
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between border-b border-border/40 px-3 sm:px-5 py-3 sm:py-3.5 select-none bg-background/80 backdrop-blur-md z-20 shrink-0">
+          {/* Mobile Sidebar Toggle Button */}
           <button
             type="button"
             aria-label="Toggle sidebar"
             onClick={() => setSidebarOpen((prev) => !prev)}
-            className="flex size-10 sm:size-9.5 items-center justify-center rounded-full bg-secondary/80 hover:bg-secondary border border-border/60 text-foreground transition-all active:scale-95 cursor-pointer shadow-xs shrink-0"
+            className="flex sm:hidden size-10 items-center justify-center rounded-full bg-secondary/80 hover:bg-secondary border border-border/60 text-foreground transition-all active:scale-95 cursor-pointer shadow-xs shrink-0"
           >
             <PanelLeftOpen className="size-4 sm:size-4.5" />
           </button>
