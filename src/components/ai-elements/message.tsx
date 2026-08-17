@@ -571,16 +571,32 @@ export const CustomCodeRenderer = (props: any) => {
 function preprocessMathContent(content: any): any {
   if (typeof content !== "string") return content;
 
-  return content
-    // Normalize LaTeX display blocks \[ ... \] -> $$ ... $$
-    .replace(/\\\[([\s\S]*?)\\\]/g, (_, eq) => `\n$$\n${eq.trim()}\n$$\n`)
-    // Normalize LaTeX inline blocks \( ... \) -> $ ... $
-    .replace(/\\\(([\s\S]*?)\\\)/g, (_, eq) => `$${eq.trim()}$`)
-    // Normalize bracketed expressions containing LaTeX commands: [ ... \frac ... ]
-    .replace(/\[\s*([^\]]*?\\[a-zA-Z]+[^\]]*?)\s*\]/g, (_, eq) => `$$${eq.trim()}$$`)
-    // Normalize isolated bracketed boxed: ( \boxed{...} ) or [ \boxed{...} ]
-    .replace(/\(\s*(\\boxed\{[^}]+\})\s*\)/g, (_, boxed) => `$${boxed}$`)
-    .replace(/\[\s*(\\boxed\{[^}]+\})\s*\]/g, (_, boxed) => `$$${boxed}$$`);
+  let text = content;
+
+  // 1. Clean \boxed{...} and $\boxed{...}$ into clear bold text: **1**
+  text = text.replace(/\$?\\boxed\{([^}]+)\}\$?(\s*)/g, "**$1**$2");
+
+  // 2. Clean simple \frac{a}{b} into plain human readable "a / b"
+  text = text.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "$1 / $2");
+
+  // 3. Clean raw bracketed LaTeX/equations: [ 5x = 5 ] or [ x = 1 ] -> 5x = 5
+  text = text.replace(/\[\s*([a-zA-Z0-9+\-*\/=<>^_\s]{1,60})\s*\]/g, "$1");
+
+  // 4. Strip single dollar signs around simple variables or equations ($x$ -> x, $3x + 2x = 5$ -> 3x + 2x = 5)
+  text = text.replace(/\$([a-zA-Z0-9+\-*\/=<>^_\s]{1,60})\$/g, (match, inner) => {
+    if (!inner.includes("\\")) {
+      return inner.trim();
+    }
+    return match;
+  });
+
+  // 5. Normalize LaTeX display blocks \[ ... \] -> $$ ... $$
+  text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, eq) => `\n$$\n${eq.trim()}\n$$\n`);
+
+  // 6. Normalize LaTeX inline blocks \( ... \) -> clean text
+  text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_, eq) => eq.trim());
+
+  return text;
 }
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
