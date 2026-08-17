@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/Language-TypeScript%205-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![Database](https://img.shields.io/badge/Database-Firebase%20Firestore-f5820d?style=for-the-badge&logo=firebase)](https://firebase.google.com/)
 
-**rYuk.ai** is a modern, enterprise-grade AI intelligence workspace engineered with dynamic multi-model compute routing, OpenAI GPT-4o vision comprehension, photorealistic FLUX-Realism image generation, live web search synthesis, interactive code execution sandboxes, and human-friendly step-by-step mathematical reasoning.
+**rYuk.ai** is an enterprise-grade AI intelligence workspace engineered with dynamic multi-model compute routing, OpenAI GPT-4o vision comprehension, photorealistic FLUX-Realism image generation, live web search synthesis, interactive code execution sandboxes, and human-friendly step-by-step mathematical reasoning.
 
 ---
 
@@ -62,6 +62,107 @@ flowchart TD
     
     ChatHandler -- "SSE Stream (Server-Sent Events)" --> MarkdownEngine
     ImageHandler -- "Base64 High-Res Image Payload" --> UI
+```
+
+---
+
+## 🔄 End-to-End Execution Workflows
+
+### 1. Multi-Modal Chat & Streaming Workflow (`/api/chat`)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User / Mobile Client
+    participant Client as Frontend (React + TanStack)
+    participant API as /api/chat (Nitro Server)
+    participant Pool as Multi-Key Pool & Failover
+    participant Upstream as OpenRouter AI Models
+    participant UI as Streamdown / KaTeX Engine
+
+    User->>Client: Enters message / uploads image / triggers @plugin
+    Client->>Client: Validates inputs (16px zoom-guard, attachments)
+    Client->>API: POST /api/chat { messages, model, task, plugin }
+    
+    alt Image Upload Detected (task: "image" or base64 files)
+        API->>API: Route to GPT-4o Vision Priority Chain
+    else @web Plugin Active
+        API->>API: Execute DuckDuckGo Web Search & Extract Image Citations
+        API->>API: Inject search context into system prompt
+    end
+
+    API->>API: Apply Persona Prompt & Step-by-Step Math Normalizer
+    API->>Pool: Acquire healthiest API key from pool
+    
+    loop Model Request & Failover Cascade
+        Pool->>Upstream: POST /chat/completions (stream: true)
+        alt Success (HTTP 200)
+            Upstream-->>API: SSE Token Stream
+        else Quota Exceeded (402) / Rate Limit (429) / Error (500)
+            Upstream-->>Pool: Error Status
+            Pool->>Pool: Rotate to next API key / fallback model
+        end
+    end
+
+    API-->>Client: Stream SSE chunks (data: {...})
+    Client->>UI: Real-time parsing with KaTeX math & Shiki highlighting
+    UI-->>User: 60fps streaming response with interactive sandboxes
+```
+
+---
+
+### 2. Next-Gen Image Generation Workflow (`/api/image`)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User
+    participant Client as Composer UI
+    participant ImageAPI as /api/image Handler
+    participant AIExpander as GPT-4o Prompt Intelligence
+    participant FLUX as FLUX.1 Realism Engine
+
+    User->>Client: Types image prompt (e.g., "Dog Barking on Man 4k")
+    Client->>ImageAPI: POST /api/image { prompt: "Dog Barking on Man 4k" }
+    
+    rect rgb(30, 30, 27)
+        Note over ImageAPI,AIExpander: Stage 1: AI Prompt Intelligence
+        ImageAPI->>AIExpander: Expand short prompt into vivid multi-subject scene
+        AIExpander-->>ImageAPI: Return detailed description with subjects, lighting & textures
+    end
+
+    rect rgb(20, 20, 18)
+        Note over ImageAPI,FLUX: Stage 2: High-Resolution Rendering
+        ImageAPI->>FLUX: Render image (1024x1024, flux-realism model)
+        FLUX-->>ImageAPI: Return 1024x1024 Base64 Image Payload
+    end
+
+    ImageAPI-->>Client: Return { imageUrl, prompt, enhancedPrompt }
+    Client-->>User: Display image with Lightbox, Zoom, and Download options
+```
+
+---
+
+### 3. Cloud Session Persistence & Auth Workflow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User
+    participant Client as Frontend State
+    participant FirebaseAuth as Google Firebase Auth
+    participant Firestore as Cloud Firestore
+
+    User->>Client: Click "Sign in with Google"
+    Client->>FirebaseAuth: signInWithPopup(GoogleAuthProvider)
+    FirebaseAuth-->>Client: User credentials (uid, email, displayName, photoURL)
+    
+    Client->>Firestore: Fetch user threads collection (/users/{uid}/threads)
+    Firestore-->>Client: Populate sidebar history & active chats
+    
+    User->>Client: Send new prompt / Create new thread
+    Client->>Client: Optimistic local state update (instant UI rendering)
+    Client->>Firestore: Background sync (thread metadata + messages)
 ```
 
 ---
@@ -148,11 +249,11 @@ SidAnk/
 
 ## 🔌 API Endpoints Reference
 
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/api/chat` | `POST` | Streams AI completions via SSE. Handles task parameter detection, multi-key pool failover, and live web search injection. |
-| `/api/image` | `POST` | Generates 1024x1024 photorealistic images. Includes AI prompt expansion and FLUX-Realism / Turbo fallbacks. |
-| `/api/models` | `GET` | Fetches and caches the list of available OpenRouter models with pricing and architectural modalities. |
+| Endpoint | Method | Payload / Params | Description |
+| :--- | :--- | :--- | :--- |
+| `/api/chat` | `POST` | `{ messages, model, task, plugin, webSearch }` | Streams AI completions via SSE. Handles task parameter detection, multi-key pool failover, and live web search injection. |
+| `/api/image` | `POST` | `{ prompt, style, size }` | Generates 1024x1024 photorealistic images. Includes AI prompt expansion and FLUX-Realism / Turbo fallbacks. |
+| `/api/models` | `GET` | *None* | Fetches and caches the list of available OpenRouter models with pricing and architectural modalities. |
 
 ---
 
