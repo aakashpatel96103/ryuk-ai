@@ -1,24 +1,47 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-// Server-side proxy to OmniRoute, OpenRouter, and Together AI/HuggingFace Image APIs.
-const OMNIROUTE_IMAGES_URL = process.env["OMNIROUTE_BASE_URL"]
-  ? `${process.env["OMNIROUTE_BASE_URL"]}/images/generations`
-  : "http://localhost:20128/v1/images/generations";
-const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images";
-const HUGGINGFACE_IMAGES_URL = "https://router.huggingface.co/together/v1/images/generations";
-const DEFAULT_IMAGE_MODEL = "google/gemini-2.5-flash-image";
-
 type ImageRequestBody = {
   prompt?: string;
   model?: string;
 };
 
+// 1. High-speed Pollinations FLUX Engine (High quality, zero rate limits, FLUX.1 architecture)
+async function generateViaPollinations(prompt: string, model = "flux"): Promise<{ b64: string; mediaType: string }> {
+  const encPrompt = encodeURIComponent(prompt);
+  const url = `https://image.pollinations.ai/prompt/${encPrompt}?width=1024&height=1024&nologo=true&model=${encodeURIComponent(model)}`;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "rYuk.ai/1.0",
+        Accept: "image/jpeg,image/png,image/*",
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Pollinations HTTP ${res.status}`);
+    }
+
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const arrayBuffer = await res.arrayBuffer();
+    const b64 = Buffer.from(arrayBuffer).toString("base64");
+    return { b64, mediaType: contentType };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// 2. Hugging Face Together FLUX Engine
 async function generateViaHuggingFace(prompt: string, apiKey: string, requestedModel?: string) {
+  const HUGGINGFACE_IMAGES_URL = "https://router.huggingface.co/together/v1/images/generations";
   const modelsToTry = Array.from(
     new Set([
       requestedModel,
       "black-forest-labs/FLUX.1-schnell",
-      "mmaluchnick/sabrina-carpenter-flux-model",
       "black-forest-labs/FLUX.1-dev",
     ].filter((m): m is string => Boolean(m)))
   );
@@ -43,7 +66,7 @@ async function generateViaHuggingFace(prompt: string, apiKey: string, requestedM
       if (!upstream.ok || !data) {
         const msg = data?.error?.message || data?.error || `HTTP ${upstream.status}`;
         lastError = `Hugging Face error (${upstream.status}): ${msg}`;
-        continue; // Fallback to next model if rate limit / limit exceeded
+        continue;
       }
 
       const imgObj = data.data?.[0];
@@ -82,124 +105,44 @@ export const Route = createFileRoute("/api/image")({
           return Response.json({ error: "`prompt` is required." }, { status: 400 });
         }
 
-        const omniKey = process.env["OMNIROUTE_API_KEY"];
+        const prompt = body.prompt.trim();
         const hfKey = process.env["HUGGINGFACE_API_KEY"];
-        const openrouterKey = process.env["OPENROUTER_API_KEY"];
 
-        // Try local OmniRoute image generation first if configured
-        if (omniKey) {
-          try {
-            const upstream = await fetch(OMNIROUTE_IMAGES_URL, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${omniKey}`,
-              },
-              body: JSON.stringify({
-                model: body.model || DEFAULT_IMAGE_MODEL,
-                prompt: body.prompt,
-              }),
-            });
-
-            const data = await upstream.json().catch(() => null);
-            if (upstream.ok && data) {
-              let b64: string | undefined = data.b64_json ?? data.data?.[0]?.b64_json;
-              let mediaType: string = data.media_type ?? "image/png";
-              
-              const urlVal = data.data?.[0]?.url;
-              if (!b64 && urlVal) {
-                const imgRes = await fetch(urlVal);
-                if (imgRes.ok) {
-                  const buffer = await imgRes.arrayBuffer();
-                  b64 = Buffer.from(buffer).toString("base64");
-                  mediaType = imgRes.headers.get("content-type") || "image/png";
-                }
-              }
-
-              if (b64) {
-                return Response.json({ b64, mediaType });
-              }
-            }
-          } catch (err) {
-            console.error("OmniRoute image proxy error:", err);
-          }
-        }
-
-        const isHFModel =
-          body.model?.includes("Omnico/") ||
-          body.model?.includes("mmaluchnick/") ||
-          body.model?.includes("FLUX") ||
-          body.model?.startsWith("hf:");
-
-        // If explicitly requesting HF or if HF key is available and OpenRouter is unconfigured/out of credits
-        if (hfKey && (isHFModel || !openrouterKey)) {
-          try {
-            const result = await generateViaHuggingFace(body.prompt.trim(), hfKey, body.model);
+        // Strategy 1: Pollinations FLUX Engine (Fast, High Quality, No Quotas)
+        try {
+          const result = await generateViaPollinations(prompt, "flux");
+          if (result.b64 && result.b64.length > 500) {
             return Response.json(result);
-          } catch (err) {
-            return Response.json(
-              { error: err instanceof Error ? err.message : String(err) },
-              { status: 502 },
-            );
           }
+        } catch (err) {
+          console.warn("Pollinations FLUX image error, trying fallback:", err);
         }
 
-        // Try OpenRouter first if key exists, but fall back to HF if OpenRouter returns 402/error
-        if (openrouterKey) {
+        // Strategy 2: Hugging Face Together FLUX (if key configured)
+        if (hfKey) {
           try {
-            const upstream = await fetch(OPENROUTER_IMAGES_URL, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${openrouterKey}`,
-              },
-              body: JSON.stringify({
-                model: body.model || DEFAULT_IMAGE_MODEL,
-                prompt: body.prompt,
-              }),
-            });
-
-            const data = await upstream.json().catch(() => null);
-
-            if (upstream.ok && data) {
-              const b64: string | undefined = data.b64_json ?? data.data?.[0]?.b64_json;
-              const mediaType: string = data.media_type ?? "image/png";
-              if (b64) return Response.json({ b64, mediaType });
-            }
-
-            // OpenRouter failed (e.g. 402 Insufficient credits) — fall back to HF if HF key is present
-            if (hfKey) {
-              const result = await generateViaHuggingFace(body.prompt.trim(), hfKey, body.model);
+            const result = await generateViaHuggingFace(prompt, hfKey, body.model);
+            if (result.b64) {
               return Response.json(result);
             }
-
-            const message = data?.error?.message || `HTTP ${upstream.status}`;
-            return Response.json(
-              { error: `OpenRouter error: ${message}` },
-              { status: upstream.status || 502 },
-            );
-          } catch {
-            if (hfKey) {
-              try {
-                const result = await generateViaHuggingFace(body.prompt.trim(), hfKey, body.model);
-                return Response.json(result);
-              } catch (err) {
-                return Response.json(
-                  { error: err instanceof Error ? err.message : String(err) },
-                  { status: 502 },
-                );
-              }
-            }
-            return Response.json(
-              { error: "Could not reach OpenRouter or Hugging Face from server." },
-              { status: 502 },
-            );
+          } catch (err) {
+            console.warn("Hugging Face image error, trying secondary Pollinations turbo:", err);
           }
+        }
+
+        // Strategy 3: Pollinations Turbo fallback
+        try {
+          const result = await generateViaPollinations(prompt, "turbo");
+          if (result.b64) {
+            return Response.json(result);
+          }
+        } catch (err) {
+          console.error("Secondary Pollinations error:", err);
         }
 
         return Response.json(
-          { error: "Neither OPENROUTER_API_KEY nor HUGGINGFACE_API_KEY is configured." },
-          { status: 500 },
+          { error: "Image generation service is temporarily unavailable. Please try again in a moment." },
+          { status: 502 },
         );
       },
     },
