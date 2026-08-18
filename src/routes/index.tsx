@@ -1267,12 +1267,7 @@ function ChatPage() {
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
           let buf = "";
-          let pendingUpdate = false;
-          let rafId: number | null = null;
-
-          const flushUpdate = () => {
-            if (!pendingUpdate) return;
-            pendingUpdate = false;
+          const pushUpdate = () => {
             const snapshot = full;
             setMessagesByThread((prev) => ({
               ...prev,
@@ -1280,16 +1275,6 @@ function ChatPage() {
                 m.id === assistantId ? { ...m, text: snapshot } : m,
               ),
             }));
-          };
-
-          const scheduleUpdate = () => {
-            pendingUpdate = true;
-            if (rafId === null) {
-              rafId = requestAnimationFrame(() => {
-                rafId = null;
-                flushUpdate();
-              });
-            }
           };
 
           while (!controller.signal.aborted) {
@@ -1311,7 +1296,7 @@ function ChatPage() {
                 const piece = extractPiece(json);
                 if (piece) {
                   full += piece;
-                  scheduleUpdate();
+                  pushUpdate();
                 }
               } catch (e) {
                 if (e instanceof Error && (e.message.includes("credit") || e.message.includes("rate") || e.message.includes("Stream error"))) {
