@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { recordStoppedModel, recordActiveModel } from "./model-status-tracker";
 
 export interface FallbackConfig {
@@ -265,9 +267,7 @@ export function getKeysPool(customKey?: string, forceRefresh: boolean = true): s
   }
 
   try {
-    if (typeof process !== "undefined" && typeof require !== "undefined") {
-      const fs = require("fs");
-      const path = require("path");
+    if (typeof process !== "undefined") {
       for (const envFile of [".env.local", ".env"]) {
         try {
           const filePath = path.resolve(process.cwd(), envFile);
