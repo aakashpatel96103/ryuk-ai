@@ -559,18 +559,18 @@ export const Route = createFileRoute("/api/chat")({
         ];
 
         const VISION_MULTIMODAL_CHAIN = [
-          "nvidia/nemotron-nano-12b-v2-vl:free",
           "google/gemma-4-26b-a4b-it:free",
+          "nvidia/nemotron-nano-12b-v2-vl:free",
           "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
           "dots-studio/dots-3-note-preview:free",
           "openrouter/free",
         ];
 
         const SYNTHESIS_FAST_CHAT_CHAIN = [
+          "google/gemma-4-26b-a4b-it:free",
           "nvidia/nemotron-3-super-120b-a12b:free",
           "nvidia/nemotron-nano-9b-v2:free",
           "nvidia/nemotron-3-nano-30b-a3b:free",
-          "google/gemma-4-26b-a4b-it:free",
           "dots-studio/dots-3-note-preview:free",
           "nvidia/nemotron-3.5-lightning:free",
           "openrouter/free",
