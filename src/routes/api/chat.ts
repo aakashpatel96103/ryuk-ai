@@ -624,7 +624,7 @@ export const Route = createFileRoute("/api/chat")({
         for (const target of activeCandidates) {
           if (!target.key) continue;
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 12000);
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
           try {
             const headers: Record<string, string> = {
               "Content-Type": "application/json",
