@@ -22,6 +22,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  UploadCloud,
   Volume2,
   VolumeX,
   Wand2,
@@ -32,6 +33,7 @@ import { AIConfigurationPanel, useEnsembleConfiguration } from "@/components/AIC
 import { useIntelligenceSettings } from "@/hooks/use-intelligence-settings";
 
 import logo from "@/assets/ember-logo.png";
+import { Logo } from "@/components/ui/Logo";
 import heroLanding from "@/assets/hero-landing.jpg";
 import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { CollapsedSidebarStrip } from "@/components/chat/CollapsedSidebarStrip";
@@ -50,6 +52,7 @@ import {
 } from "@/components/ai-elements/message";
 
 import { Shimmer } from "@/components/ai-elements/shimmer";
+import { PdfDocumentCard } from "@/components/ui/PdfDocumentCard";
 import { ChatSidebar, type Thread } from "@/components/chat/ChatSidebar";
 import { PluginPicker } from "@/components/chat/PluginPicker";
 import { MODELS, PLUGINS, getPlugin, type PluginId } from "@/components/chat/plugins";
@@ -243,9 +246,10 @@ type ChatMessageActionsProps = {
   createdAt?: number | undefined;
   onRegenerate: () => void;
   isPending?: boolean | undefined;
+  isRegenerating?: boolean | undefined;
 };
 
-function ChatMessageActions({ text, createdAt, onRegenerate, isPending }: ChatMessageActionsProps) {
+function ChatMessageActions({ text, createdAt, onRegenerate, isPending, isRegenerating }: ChatMessageActionsProps) {
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [feedback, setFeedback] = useState<"like" | "dislike" | null>(null);
@@ -258,16 +262,56 @@ function ChatMessageActions({ text, createdAt, onRegenerate, isPending }: ChatMe
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSpeak = () => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      toast.error("Audio synthesis unavailable");
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+
+  const handleSpeak = async () => {
+    if (speaking) {
+      if (audioElement) {
+        audioElement.pause();
+        setAudioElement(null);
+      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      setSpeaking(false);
+      toast.info("Playback stopped");
       return;
     }
 
-    if (speaking) {
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
-      toast.info("Playback stopped");
+    if (!text) return;
+
+    try {
+      // 1. Try Deepgram Flux TTS endpoint
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text.slice(0, 500) }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (data?.audio) {
+        const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
+        audio.onended = () => {
+          setSpeaking(false);
+          setAudioElement(null);
+        };
+        audio.onerror = () => {
+          setSpeaking(false);
+          setAudioElement(null);
+        };
+        setAudioElement(audio);
+        setSpeaking(true);
+        await audio.play();
+        toast.info("Playing Deepgram audio");
+        return;
+      }
+    } catch {
+      // Fall through to browser speech synthesis
+    }
+
+    // 2. High-performance Browser Speech Synthesis Fallback
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      toast.error("Audio synthesis unavailable");
       return;
     }
 
@@ -299,60 +343,59 @@ function ChatMessageActions({ text, createdAt, onRegenerate, isPending }: ChatMe
   };
 
   return (
-    <div className="flex items-center gap-1.5 pt-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+    <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 pt-1 text-muted-foreground/70 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
       <MessageAction
+        size="icon-xs"
         label={copied ? "Copied" : "Copy"}
         tooltip={copied ? "Copied!" : "Copy"}
         onClick={handleCopy}
+        className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30"
       >
         {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
       </MessageAction>
 
       <MessageAction
+        size="icon-xs"
         label={speaking ? "Stop reading" : "Read aloud"}
         tooltip={speaking ? "Stop reading" : "Read aloud"}
         onClick={handleSpeak}
-        className={cn(speaking && "text-primary animate-pulse")}
+        className={cn("rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30", speaking && "text-primary animate-pulse")}
       >
         {speaking ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
       </MessageAction>
 
       <MessageAction
+        size="icon-xs"
         label="Helpful"
         tooltip="Mark as helpful"
         onClick={handleLike}
-        className={cn(feedback === "like" && "text-primary")}
+        className={cn("rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30", feedback === "like" && "text-primary")}
       >
         <ThumbsUp className={cn("size-3.5", feedback === "like" && "fill-primary text-primary")} />
       </MessageAction>
 
       <MessageAction
+        size="icon-xs"
         label="Not helpful"
         tooltip="Mark as not helpful"
         onClick={handleDislike}
-        className={cn(feedback === "dislike" && "text-destructive")}
+        className={cn("rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30", feedback === "dislike" && "text-destructive")}
       >
         <ThumbsDown className={cn("size-3.5", feedback === "dislike" && "fill-destructive text-destructive")} />
       </MessageAction>
 
       <MessageAction
+        size="icon-xs"
         label="Regenerate"
         tooltip="Regenerate"
         onClick={onRegenerate}
         disabled={isPending}
+        className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30"
       >
-        <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
+        <RefreshCw className={cn("size-3.5", isRegenerating && "animate-spin text-primary")} />
       </MessageAction>
 
-      <MessageAction
-        label="Make & Download PDF"
-        tooltip="Make & Download PDF"
-        onClick={() => exportToPdf("rYuk.ai PDF Document", text)}
-      >
-        <FileDown className="size-3.5" />
-      </MessageAction>
-
-      <span className="ml-2 text-[11px] text-muted-foreground/70 select-none font-mono">
+      <span className="ml-1 text-[10px] sm:text-[11px] text-muted-foreground/60 select-none font-mono whitespace-nowrap">
         {formatRelativeTime(createdAt)}
       </span>
     </div>
@@ -365,9 +408,10 @@ type UserMessageActionsProps = {
   onEdit: () => void;
   onResend: () => void;
   isPending?: boolean | undefined;
+  isRegenerating?: boolean | undefined;
 };
 
-function UserMessageActions({ text, createdAt, onEdit, onResend, isPending }: UserMessageActionsProps) {
+function UserMessageActions({ text, createdAt, onEdit, onResend, isPending, isRegenerating }: UserMessageActionsProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -379,33 +423,39 @@ function UserMessageActions({ text, createdAt, onEdit, onResend, isPending }: Us
   };
 
   return (
-    <div className="flex items-center justify-end gap-1.5 pt-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-      <span className="mr-1 text-[11px] text-muted-foreground/70 select-none font-mono">
+    <div className="flex items-center justify-end gap-1 sm:gap-1.5 pt-1 text-muted-foreground/70 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+      <span className="mr-1 text-[10px] sm:text-[11px] text-muted-foreground/60 select-none font-mono whitespace-nowrap">
         {formatRelativeTime(createdAt)}
       </span>
 
       <MessageAction
+        size="icon-xs"
         label="Resend"
         tooltip="Resend message"
         onClick={onResend}
         disabled={isPending}
+        className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30"
       >
-        <RotateCcw className={cn("size-3.5", isPending && "animate-spin")} />
+        <RotateCcw className={cn("size-3.5", isRegenerating && "animate-spin text-primary")} />
       </MessageAction>
 
       <MessageAction
+        size="icon-xs"
         label="Edit"
         tooltip="Edit message"
         onClick={onEdit}
         disabled={isPending}
+        className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30"
       >
         <Pencil className="size-3.5" />
       </MessageAction>
 
       <MessageAction
+        size="icon-xs"
         label={copied ? "Copied" : "Copy"}
         tooltip={copied ? "Copied!" : "Copy message"}
         onClick={handleCopy}
+        className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/30"
       >
         {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
       </MessageAction>
@@ -568,12 +618,15 @@ function markdownToHtml(md: string): string {
 }
 
 async function exportToPdf(title: string, textContent: string) {
-  const toastId = toast.loading("Generating direct PDF file...");
+  if (!textContent) {
+    toast.error("No text available to export");
+    return;
+  }
+
+  const toastId = toast.loading("Preparing PDF export...");
+  let container: HTMLDivElement | null = null;
 
   try {
-    const html2pdfModule = await import("html2pdf.js");
-    const html2pdf = html2pdfModule.default || html2pdfModule;
-
     const htmlBlockMatch = textContent.match(/```html\s*([\s\S]*?)\s*```/i);
     let innerContent = "";
 
@@ -604,20 +657,25 @@ async function exportToPdf(title: string, textContent: string) {
       `;
     }
 
-    const container = document.createElement("div");
+    container = document.createElement("div");
     container.style.position = "fixed";
     container.style.left = "-9999px";
     container.style.top = "-9999px";
     container.style.width = "794px";
+    container.style.opacity = "0";
+    container.style.pointerEvents = "none";
     container.innerHTML = innerContent;
     document.body.appendChild(container);
 
     const h1Match = textContent.match(/^#\s+(.+)$/m);
-    const docTitle = h1Match ? h1Match[1]!.trim() : (title || "Executive Document");
+    const docTitle = h1Match ? h1Match[1]!.trim() : (title || "rYuk_Document");
     const safeFilename = `${docTitle.replace(/[^a-z0-9]/gi, "_")}.pdf`;
 
+    const html2pdfModule = await import("html2pdf.js");
+    const html2pdf = html2pdfModule.default || html2pdfModule;
+
     const opt = {
-      margin: [8, 8, 8, 8] as [number, number, number, number],
+      margin: [10, 10, 10, 10] as [number, number, number, number],
       filename: safeFilename,
       image: { type: "jpeg" as const, quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true, logging: false },
@@ -625,31 +683,45 @@ async function exportToPdf(title: string, textContent: string) {
     };
 
     await html2pdf().set(opt).from(container).save();
-    document.body.removeChild(container);
-
     toast.dismiss(toastId);
-    toast.success(`Direct PDF downloaded: ${safeFilename}`);
+    toast.success(`PDF downloaded: ${safeFilename}`);
   } catch (err) {
-    console.error("Direct PDF download error, launching print fallback:", err);
+    console.error("PDF generation error, fallback initiated:", err);
     toast.dismiss(toastId);
     openPrintFallback(title, textContent);
+  } finally {
+    if (container && container.parentNode) {
+      try {
+        container.parentNode.removeChild(container);
+      } catch {
+        // Silently ignore cleanup error
+      }
+    }
   }
 }
 
 function openPrintFallback(title: string, textContent: string) {
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
-    toast.error("Please allow popups to download PDF");
+    toast.error("Please allow popups to export document");
     return;
   }
   const htmlBlockMatch = textContent.match(/```html\s*([\s\S]*?)\s*```/i);
   let rawHtml = htmlBlockMatch ? htmlBlockMatch[1]! : textContent;
   if (!rawHtml.includes("<!DOCTYPE html>")) {
     const formattedHtml = markdownToHtml(textContent);
-    rawHtml = `<!DOCTYPE html><html><head><title>${title}</title></head><body>${formattedHtml}</body></html>`;
+    rawHtml = `<!DOCTYPE html><html><head><title>${title}</title><style>body{font-family:sans-serif;padding:24px;color:#1e293b;line-height:1.6;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #cbd5e1;padding:8px;}pre{background:#0f172a;color:#f8fafc;padding:12px;border-radius:6px;}</style></head><body>${formattedHtml}</body></html>`;
   }
   printWindow.document.write(rawHtml);
   printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => {
+    try {
+      printWindow.print();
+    } catch {
+      // Ignore
+    }
+  }, 500);
 }
 
 function getFileNameForLanguage(lang: string): string {
@@ -678,26 +750,13 @@ function getFileNameForLanguage(lang: string): string {
 
 function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [threads, setThreads] = useState<Thread[]>(() => {
-    try {
-      const saved = localStorage.getItem("sidank_threads");
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-  const [activeThread, setActiveThread] = useState(() => {
-    try {
-      return localStorage.getItem("sidank_active_thread") || "";
-    } catch { return ""; }
-  });
-  const [messagesByThread, setMessagesByThread] = useState<Record<string, ChatMessage[]>>(() => {
-    try {
-      const saved = localStorage.getItem("sidank_messages");
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  });
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [activeThread, setActiveThread] = useState<string>("");
+  const [messagesByThread, setMessagesByThread] = useState<Record<string, ChatMessage[]>>({});
   const [plugin, setPlugin] = useState<PluginId>("chat");
-  const [model, setModel] = useState(MODELS[0]!.id);
+  const [model, setModel] = useState(MODELS[0]?.id || "ryuk-ai-ensemble");
   const [pending, setPending] = useState(false);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -706,6 +765,12 @@ function ChatPage() {
   const [authLoading, setAuthLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!pending) {
+      setRegeneratingId(null);
+    }
+  }, [pending]);
 
   // AI Intelligence and Ensemble Configuration
   const { provider, personality } = useIntelligenceSettings();
@@ -863,14 +928,26 @@ function ChatPage() {
           console.error("Failed to load user chat sessions:", err);
         }
       } else {
-        // Logged out — clear all chat state
-        setThreads([]);
-        setMessagesByThread({});
-        setActiveThread("");
+        // Not logged in: restore local storage chats safely
         try {
-          localStorage.removeItem("sidank_active_thread");
+          if (typeof window !== "undefined") {
+            const savedThreads = localStorage.getItem("sidank_threads");
+            const savedMessages = localStorage.getItem("sidank_messages");
+            const savedActiveThread = localStorage.getItem("sidank_active_thread");
+            if (savedThreads) {
+              const parsed = JSON.parse(savedThreads);
+              if (Array.isArray(parsed)) setThreads(parsed);
+            }
+            if (savedMessages) {
+              const parsed = JSON.parse(savedMessages);
+              if (parsed && typeof parsed === "object") setMessagesByThread(parsed);
+            }
+            if (savedActiveThread) {
+              setActiveThread(savedActiveThread);
+            }
+          }
         } catch {
-          // Ignore
+          // Ignore local storage parse errors
         }
       }
       setAuthLoading(false);
@@ -891,18 +968,38 @@ function ChatPage() {
     );
     if (match) return match.id;
 
-    // Intelligent image intent detection
+    // Explicit diagram, flowchart, architecture, mindmap, ERD, and process map requests MUST route to OpenAI Chat for interactive Mermaid diagram rendering
+    const isDiagramIntent =
+      trimmed.includes("diagram") ||
+      trimmed.includes("flowchart") ||
+      trimmed.includes("flow chart") ||
+      trimmed.includes("sequence diagram") ||
+      trimmed.includes("architecture diagram") ||
+      trimmed.includes("er diagram") ||
+      trimmed.includes("erd") ||
+      trimmed.includes("class diagram") ||
+      trimmed.includes("state diagram") ||
+      trimmed.includes("mindmap") ||
+      trimmed.includes("mind map") ||
+      trimmed.includes("gantt") ||
+      trimmed.includes("wireframe") ||
+      (trimmed.includes("draw") && (trimmed.includes("flow") || trimmed.includes("architecture") || trimmed.includes("system") || trimmed.includes("schema") || trimmed.includes("process")));
+
+    if (isDiagramIntent) {
+      return "chat";
+    }
+
+    // Intelligent image intent detection for actual picture/artwork generation
     const imagePatterns = [
       "generate image", "create image", "make image",
-      "draw a", "draw an", "draw me", "draw the",
       "generate a picture", "create a picture", "make a picture",
       "generate photo", "create photo", "make photo",
       "create artwork", "generate artwork",
-      "reference image", "academic image", "academic generation",
       "generate a logo", "create a logo", "design a logo",
       "create a poster", "generate a poster",
       "create an illustration", "generate an illustration",
-      "visualize", "make a diagram image",
+      "draw a picture", "draw an image", "draw a portrait",
+      "paint a", "paint an", "render a 3d",
     ];
     if (imagePatterns.some((p) => trimmed.includes(p))) {
       return "image";
@@ -911,11 +1008,32 @@ function ChatPage() {
     return plugin;
   }, [text, plugin]);
 
-  const handleFilesAdded = useCallback((files: FileList | null) => {
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  const handleFilesAdded = useCallback((files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file) => {
-      const isImage = file.type.startsWith("image/");
+    const fileList = Array.from(files);
+    let countAdded = 0;
+
+    fileList.forEach((file) => {
+      // 50MB per file safety check
+      if (file.size > 50 * 1024 * 1024) {
+        toast.error(`File "${file.name}" exceeds 50MB limit`);
+        return;
+      }
+
+      countAdded++;
+      const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(file.name);
+      const isTextOrCode =
+        file.type.startsWith("text/") ||
+        file.type.includes("json") ||
+        file.type.includes("javascript") ||
+        file.type.includes("typescript") ||
+        file.type.includes("xml") ||
+        /\.(txt|md|markdown|csv|json|js|jsx|ts|tsx|py|java|c|cpp|h|hpp|cs|go|rs|php|rb|html|css|scss|sql|sh|bash|yaml|yml|toml|xml|env|log|ini)$/i.test(file.name);
+
       const reader = new FileReader();
 
       reader.onload = (e) => {
@@ -924,28 +1042,99 @@ function ChatPage() {
           id: crypto.randomUUID(),
           name: file.name,
           size: file.size,
-          type: file.type || "application/octet-stream",
+          type: file.type || (isImage ? "image/png" : isTextOrCode ? "text/plain" : "application/octet-stream"),
           ...(isImage && typeof result === "string" ? { dataUrl: result } : {}),
-          ...(!isImage && typeof result === "string" ? { content: result } : {}),
+          ...(isTextOrCode && typeof result === "string" ? { content: result } : {}),
+          ...(!isImage && !isTextOrCode && typeof result === "string" ? { dataUrl: result, content: `[Document file: ${file.name}]` } : {}),
         };
 
-        setAttachedFiles((prev) => [...prev, newAttachedFile]);
+        setAttachedFiles((prev) => {
+          if (prev.some((p) => p.name === file.name && p.size === file.size)) {
+            return prev;
+          }
+          return [...prev, newAttachedFile];
+        });
+      };
+
+      reader.onerror = () => {
+        toast.error(`Failed to read file "${file.name}"`);
       };
 
       if (isImage) {
         reader.readAsDataURL(file);
-      } else {
+      } else if (isTextOrCode) {
         reader.readAsText(file);
+      } else {
+        reader.readAsDataURL(file);
       }
     });
 
-    const hasImage = Array.from(files).some((f) => f.type.startsWith("image/"));
-    if (hasImage) {
-      setPlugin("chat");
-    } else {
-      setPlugin("doc");
+    if (countAdded > 0) {
+      const hasImage = fileList.some((f) => f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(f.name));
+      if (hasImage) {
+        setPlugin("chat");
+      } else {
+        setPlugin("doc");
+      }
+      toast.success(`Attached ${countAdded} file(s) for AI reading`);
     }
-    toast.success(`Attached ${files.length} file(s) for AI reading`);
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer?.types && Array.from(e.dataTransfer.types).includes("Files")) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+      handleFilesAdded(e.dataTransfer.files);
+    }
+  }, [handleFilesAdded]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
+      e.preventDefault();
+      handleFilesAdded(e.clipboardData.files);
+    }
+  }, [handleFilesAdded]);
+
+  // Global window listeners to prevent browser from navigating away on dropped files
+  useEffect(() => {
+    const preventWindowDrop = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("dragover", preventWindowDrop);
+    window.addEventListener("drop", preventWindowDrop);
+    return () => {
+      window.removeEventListener("dragover", preventWindowDrop);
+      window.removeEventListener("drop", preventWindowDrop);
+    };
   }, []);
 
 
@@ -1020,7 +1209,7 @@ function ChatPage() {
             return {
               role: m.role,
               content: [
-                { type: "text", text: m.text },
+                { type: "text", text: m.text?.trim() || "Analyze and explain the contents of this image in detail." },
                 { type: "image_url", image_url: { url: m.image } },
               ],
             };
@@ -1322,6 +1511,7 @@ function ChatPage() {
         [activeThread]: priorHistory,
       }));
       setPending(true);
+      setRegeneratingId(msgId);
       toast.info("Regenerating response...");
 
       const threadTitle = threads.find((t) => t?.id === activeThread)?.title || "Chat";
@@ -1351,6 +1541,7 @@ function ChatPage() {
         [activeThread]: priorHistory,
       }));
       setPending(true);
+      setRegeneratingId(msgId);
       toast.info("Resending prompt...");
 
       const threadTitle = threads.find((t) => t?.id === activeThread)?.title || "Chat";
@@ -1540,7 +1731,7 @@ function ChatPage() {
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="absolute -inset-2 rounded-full bg-primary/30 blur-md animate-pulse-glow-slow" />
-              <img src={logo} alt="rYuk.ai logo" className="relative size-8 drop-shadow-md" />
+              <Logo size={32} glow className="relative size-8 drop-shadow-md" />
             </div>
             <span className="font-display text-xl font-extrabold tracking-tight text-white">rYuk.ai</span>
           </div>
@@ -1757,7 +1948,35 @@ function ChatPage() {
         />
       )}
 
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+      <main
+        className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Fullscreen / Workspace Drag and Drop Glassmorphism Overlay */}
+        {isDragging && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/75 backdrop-blur-md border-2 border-dashed border-primary/80 rounded-2xl m-2 sm:m-4 animate-fade-in pointer-events-none shadow-2xl">
+            <div className="flex flex-col items-center text-center p-6 sm:p-8 space-y-4 bg-[#181816]/95 rounded-2xl border border-primary/40 shadow-2xl max-w-md mx-4 animate-scale-up">
+              <div className="flex size-20 items-center justify-center rounded-full bg-primary/20 text-primary animate-bounce shadow-glow">
+                <UploadCloud className="size-10 stroke-[2.2]" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="font-display text-xl sm:text-2xl font-bold text-foreground tracking-tight">
+                  Drop Files to Upload
+                </h3>
+                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                  Add photos, images, PDFs, code files, datasets, and documents to your AI prompt
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary">
+                Release to attach instantly
+              </div>
+            </div>
+          </div>
+        )}
+
         <header className="flex items-center justify-between border-b border-border/40 px-3 sm:px-5 py-3 sm:py-3.5 select-none bg-background/80 backdrop-blur-md z-20 shrink-0">
           {/* Mobile Sidebar Toggle Button */}
           <button
@@ -1875,7 +2094,7 @@ function ChatPage() {
                 {/* Claude-Style Warm Center Sunburst Spark Logo */}
                 <div className="relative mb-5 sm:mb-6">
                   <div className="absolute -inset-3 rounded-full bg-primary/20 blur-xl animate-pulse" />
-                  <img src={logo} alt="rYuk.ai logo" width={52} height={52} className="relative size-12 sm:size-13 drop-shadow-2xl animate-float-slow" />
+                  <Logo size={52} glow className="relative size-12 sm:size-13 drop-shadow-2xl animate-float-slow" />
                 </div>
 
                 {/* Clean, Modern AI Workspace Headline */}
@@ -1890,11 +2109,28 @@ function ChatPage() {
                 const p = m.plugin ? getPlugin(m.plugin) : null;
                 const PIcon = p?.icon;
                 const isLastAssistant = m.role === "assistant" && idx === messages.length - 1;
+
+                // Detect if user requested PDF format for this message
+                const prevUserMsg = idx > 0 ? messages[idx - 1] : null;
+                const isPdfRequested =
+                  m.role === "assistant" &&
+                  Boolean(m.text) &&
+                  Boolean(
+                    (prevUserMsg?.role === "user" &&
+                      /\b(pdf|into pdf|in pdf|export to pdf|make a pdf|create.*pdf|give me.*pdf|generate.*pdf)\b/i.test(
+                        prevUserMsg.text || ""
+                      )) ||
+                    /\b(pdf document|executive pdf document)\b/i.test(m.text || "")
+                  );
+
+                const h1Match = m.text?.match(/^#\s+(.+)$/m);
+                const docTitle = h1Match ? h1Match[1]!.trim() : "Executive Document";
+
                 return (
                   <Message key={m.id} from={m.role}>
                     {m.role === "assistant" && (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <img src={logo} alt="" width={18} height={18} className="size-4.5" />
+                        <Logo size={18} glow className="size-4.5" />
                         <span className="font-medium text-foreground">rYuk.ai</span>
                         {p && PIcon && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-medium text-primary">
@@ -1907,9 +2143,18 @@ function ChatPage() {
                     <MessageContent>
                       {m.role === "assistant" ? (
                         m.text ? (
-                          <MessageResponse>
-                            {m.text}
-                          </MessageResponse>
+                          <>
+                            {isPdfRequested && (
+                              <PdfDocumentCard
+                                title={docTitle}
+                                content={m.text}
+                                date={m.createdAt}
+                              />
+                            )}
+                            <MessageResponse>
+                              {m.text}
+                            </MessageResponse>
+                          </>
                         ) : (
                           <Shimmer className="text-sm">Thinking...</Shimmer>
                         )
@@ -2000,6 +2245,7 @@ function ChatPage() {
                         text={m.text}
                         createdAt={m.createdAt}
                         isPending={pending}
+                        isRegenerating={pending && regeneratingId === m.id}
                         onRegenerate={() => handleRegenerate(m.id)}
                       />
                     )}
@@ -2008,6 +2254,7 @@ function ChatPage() {
                         text={m.text}
                         createdAt={m.createdAt}
                         isPending={pending}
+                        isRegenerating={pending && regeneratingId === m.id}
                         onResend={() => handleResendUserMsg(m.id)}
                         onEdit={() => {
                           setEditingId(m.id);
@@ -2046,7 +2293,11 @@ function ChatPage() {
             )}
 
             {/* Claude-Style Card Composer */}
-            <div className="rounded-2xl sm:rounded-[28px] border border-border/60 bg-[#1a1a17]/95 backdrop-blur-xl p-2.5 sm:p-3 shadow-2xl transition-all focus-within:border-primary/50 focus-within:shadow-glow">
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              className="rounded-2xl sm:rounded-[28px] border border-border/60 bg-[#1a1a17]/95 backdrop-blur-xl p-2.5 sm:p-3 shadow-2xl transition-all focus-within:border-primary/50 focus-within:shadow-glow"
+            >
               {attachedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-2 pb-2">
                   {attachedFiles.map((f) => (
@@ -2076,15 +2327,21 @@ function ChatPage() {
 
               <textarea
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  // Auto-grow textarea height
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
+                }}
+                onPaste={handlePaste}
                 placeholder={
                   detectedPlugin === "image"
-                    ? "Describe the visual content you need..."
+                    ? "Describe an image..."
                     : attachedFiles.length > 0
-                      ? "What would you like to know about these files..."
-                      : "Message rYuk Intelligence"
+                      ? "Ask about these files..."
+                      : "Message rYuk..."
                 }
-                className="w-full resize-none bg-transparent px-2 sm:px-2.5 text-base outline-none placeholder:text-muted-foreground/60 leading-relaxed font-sans max-h-36 min-h-[48px] py-1"
+                className="w-full resize-none bg-transparent px-2.5 sm:px-3 text-sm sm:text-base text-foreground outline-none placeholder:text-muted-foreground/50 leading-relaxed font-sans max-h-48 min-h-[44px] py-1.5 focus:outline-none"
                 rows={1}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {

@@ -252,6 +252,7 @@ type MessageActionsProps = {
   timestamp?: number | undefined;
   onRegenerate: () => void;
   isPending?: boolean | undefined;
+  isRegenerating?: boolean | undefined;
   metadata?: {
     hybrid?: boolean;
     modelsUsed?: number;
@@ -259,7 +260,7 @@ type MessageActionsProps = {
   };
 };
 
-function AssistantMessageActions({ content, timestamp, onRegenerate, isPending, metadata }: MessageActionsProps) {
+function AssistantMessageActions({ content, timestamp, onRegenerate, isPending, isRegenerating, metadata }: MessageActionsProps) {
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [feedback, setFeedback] = useState<"positive" | "negative" | null>(null);
@@ -353,15 +354,7 @@ function AssistantMessageActions({ content, timestamp, onRegenerate, isPending, 
         onClick={onRegenerate}
         disabled={isPending}
       >
-        <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
-      </MessageAction>
-
-      <MessageAction
-        label="Export PDF"
-        tooltip="Export as PDF document"
-        onClick={() => exportToPdf("rYuk.ai Document", content)}
-      >
-        <FileDown className="size-3.5" />
+        <RefreshCw className={cn("size-3.5", isRegenerating && "animate-spin text-primary")} />
       </MessageAction>
 
       {metadata?.hybrid && (
@@ -386,9 +379,10 @@ type UserMessageActionsProps = {
   onEdit: () => void;
   onResend: () => void;
   isPending?: boolean | undefined;
+  isRegenerating?: boolean | undefined;
 };
 
-function UserMessageActions({ content, timestamp, onEdit, onResend, isPending }: UserMessageActionsProps) {
+function UserMessageActions({ content, timestamp, onEdit, onResend, isPending, isRegenerating }: UserMessageActionsProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -411,7 +405,7 @@ function UserMessageActions({ content, timestamp, onEdit, onResend, isPending }:
         onClick={onResend}
         disabled={isPending}
       >
-        <RotateCcw className={cn("size-3.5", isPending && "animate-spin")} />
+        <RotateCcw className={cn("size-3.5", isRegenerating && "animate-spin text-primary")} />
       </MessageAction>
 
       <MessageAction

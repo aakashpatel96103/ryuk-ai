@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Code, FolderGit2, History, Layers, LogOut, MessageSquare, PanelLeftClose, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import logo from "@/assets/ember-logo.png";
+import { Logo } from "@/components/ui/Logo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { signInWithGoogle, logOut, type User } from "@/lib/firebase";
@@ -70,7 +70,7 @@ export function ChatSidebar({ threads, activeId, onSelect, onDeleteThread, onNew
       {/* Top Brand Header */}
       <div className="flex items-center justify-between px-5 pt-5 pb-3">
         <div className="flex items-center gap-2.5">
-          <img src={logo} alt="rYuk.ai logo" width={26} height={26} className="size-6.5 drop-shadow-md" />
+          <Logo size={26} glow className="size-6.5 drop-shadow-md" />
           <span className="font-serif text-xl font-bold tracking-tight text-foreground">rYuk.ai</span>
         </div>
         <button

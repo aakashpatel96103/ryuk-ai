@@ -508,7 +508,7 @@
   padding: 1rem 1.25rem !important;
 }
 
-/* Zero Gap Rule: Strip ALL margin-top, margin-bottom, padding-top & padding-bottom from wrapper divs */
+/* Zero Gap Rule: Strip ALL margin-top & margin-bottom from wrapper divs */
 .is-assistant figure div,
 .is-assistant figure > div,
 .is-assistant [data-streamdown="code-block"] div,
@@ -517,16 +517,38 @@
 .is-assistant [data-streamdown="code"] div,
 .is-assistant [data-streamdown="code"] > div,
 .is-assistant figure [class*="my-"],
-.is-assistant figure [class*="py-"],
-.is-assistant figure [class*="p-"] {
+.is-assistant figure [class*="py-"] {
   background: transparent !important;
   border: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   margin-top: 0 !important;
   margin-bottom: 0 !important;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
+}
+
+/* Collapse intermediate sticky action container so it takes 0px in normal layout flow */
+.is-assistant [data-streamdown="code-block"] > div:not([data-streamdown="code-block-header"]):not([data-streamdown="code-block-body"]),
+.is-assistant figure > div:not([data-streamdown="code-block-header"]):not([data-streamdown="code-block-body"]):not([data-streamdown="mermaid-header"]):not([data-streamdown="mermaid-body"]),
+.is-assistant [data-streamdown="code-block"] .sticky,
+.is-assistant figure .sticky {
+  position: absolute !important;
+  top: 4px !important;
+  right: 8px !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+  z-index: 30 !important;
+}
+
+/* Specific zero-gap rule for Streamdown code block body & pre */
+[data-streamdown="code-block-body"],
+.is-assistant [data-streamdown="code-block-body"],
+[data-streamdown="code-block"] [data-streamdown="code-block-body"] {
+  padding: 0.5rem 0.95rem 0.65rem 0.95rem !important;
+  margin: 0 !important;
+  background: transparent !important;
 }
 
 .is-assistant figure pre,
@@ -534,12 +556,12 @@
 .is-assistant [data-streamdown="code"] pre,
 .is-assistant [data-streamdown] figure pre {
   display: block !important;
-  padding: 0.25rem 0.95rem 0.5rem 0.95rem !important;
+  padding: 0 !important;
   margin: 0 !important;
   overflow-x: auto !important;
   font-family: var(--font-mono) !important;
   font-size: 0.875rem !important;
-  line-height: 1.4 !important;
+  line-height: 1.45 !important;
 }
 
 .is-assistant pre code,

@@ -133,18 +133,23 @@ export function analyzeModelCapabilities(model: OpenRouterModel): ModelCapabilit
       modelId.includes("vision") ||
       modelId.includes("vl") ||
       modelId.includes("pixtral") ||
+      modelId.includes("omni") ||
       modelName.includes("vision") ||
       model.architecture?.modality === "multimodal",
 
     supportsCode:
       modelId.includes("code") ||
       modelId.includes("coder") ||
+      modelId.includes("nemotron") ||
       modelName.includes("code") ||
       description.includes("code"),
 
     supportsMath:
       modelId.includes("math") ||
       modelId.includes("r1") ||
+      modelId.includes("o1") ||
+      modelId.includes("o3") ||
+      modelId.includes("nemotron") ||
       modelId.includes("reasoning") ||
       description.includes("math"),
 
@@ -156,6 +161,7 @@ export function analyzeModelCapabilities(model: OpenRouterModel): ModelCapabilit
       modelId.includes("r1") ||
       modelId.includes("o1") ||
       modelId.includes("o3") ||
+      modelId.includes("nemotron-3-ultra") ||
       modelId.includes("reasoning")
   };
 }
@@ -222,24 +228,23 @@ function calculateModelScore(model: OpenRouterModel): number {
   let score = 0;
   const modelId = model.id.toLowerCase();
 
-  // High-quality model families
-  if (modelId.includes("deepseek")) score += 100;
-  if (modelId.includes("qwen")) score += 90;
-  if (modelId.includes("llama-3.3") || modelId.includes("llama-3.2")) score += 85;
-  if (modelId.includes("gemma-4")) score += 80;
-  if (modelId.includes("mistral")) score += 75;
-  if (modelId.includes("phi")) score += 70;
+  // Top Verified Active Free Model Families
+  if (modelId.includes("nemotron-3-ultra")) score += 130;
+  if (modelId.includes("nemotron-3.5-lightning")) score += 125;
+  if (modelId.includes("nemotron-3-super")) score += 120;
+  if (modelId.includes("nemotron-nano-12b-v2-vl")) score += 115;
+  if (modelId.includes("cohere/north-mini-code")) score += 110;
+  if (modelId.includes("poolside/laguna")) score += 105;
+  if (modelId.includes("openrouter/free")) score += 100;
+  if (modelId.includes("gemma-4")) score += 95;
+  if (modelId.includes("gpt-oss")) score += 90;
+  if (modelId.includes("nemotron")) score += 85;
 
   // Context length bonus
-  score += Math.min(model.context_length / 1000, 50);
+  score += Math.min((model.context_length || 32000) / 10000, 30);
 
-  // Recent models (higher version numbers)
-  if (modelId.includes("3.3") || modelId.includes("4.")) score += 20;
-  if (modelId.includes("2.5") || modelId.includes("3.2")) score += 15;
-
-  // Specialized capabilities
-  if (modelId.includes("instruct")) score += 10;
-  if (modelId.includes("chat")) score += 10;
+  // Free model flag priority
+  if (modelId.endsWith(":free") || modelId === "openrouter/free") score += 50;
 
   return score;
 }

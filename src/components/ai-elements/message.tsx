@@ -16,6 +16,7 @@ import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon, Play, Code, RotateCw, Monitor, Tablet, Smartphone, ExternalLink, Terminal } from "lucide-react";
+import { MermaidViewer } from "@/components/ui/MermaidViewer";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import {
   createContext,
@@ -88,27 +89,19 @@ export const MessageAction = ({
   size = "icon-sm",
   ...props
 }: MessageActionProps) => {
-  const button = (
-    <Button size={size} type="button" variant={variant} {...props}>
+  return (
+    <Button
+      size={size}
+      type="button"
+      variant={variant}
+      title={tooltip || label}
+      aria-label={label || tooltip}
+      {...props}
+    >
       {children}
       <span className="sr-only">{label || tooltip}</span>
     </Button>
   );
-
-  if (tooltip) {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>{button}</TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
-
-  return button;
 };
 
 interface MessageBranchContextType {
@@ -534,10 +527,25 @@ export const CustomCodeRenderer = (props: any) => {
     : (Array.isArray(props.children) ? props.children.join("") : "");
 
   // Clean leading and trailing newlines/newlines-with-whitespace:
-  rawCode = rawCode.replace(/^[\r\n]+|[\r\n]+$/g, "");
+  rawCode = rawCode.trim();
 
   const className = props.className || "";
   const language = className.replace("language-", "").trim().toLowerCase();
+
+  const isMermaid =
+    language === "mermaid" ||
+    rawCode.startsWith("sequenceDiagram") ||
+    rawCode.startsWith("graph ") ||
+    rawCode.startsWith("flowchart ") ||
+    rawCode.startsWith("classDiagram") ||
+    rawCode.startsWith("erDiagram") ||
+    rawCode.startsWith("stateDiagram") ||
+    rawCode.startsWith("mindmap") ||
+    rawCode.startsWith("gantt");
+
+  if (isMermaid) {
+    return <MermaidViewer chart={rawCode} />;
+  }
 
   const isHtml = language === "html" || language === "svg" || rawCode.includes("<!DOCTYPE html>") || rawCode.includes("<html>") || rawCode.includes("<body>");
 
@@ -601,7 +609,7 @@ function preprocessMathContent(content: any): any {
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-const streamdownPlugins = { cjk, code, math, mermaid };
+const streamdownPlugins = { cjk, code, math };
 
 export const MessageResponse = memo(
   ({ className, controls = true, children, ...props }: MessageResponseProps) => {

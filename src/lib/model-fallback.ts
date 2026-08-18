@@ -1,7 +1,4 @@
-/**
- * Automatic Model Fallback System
- * Switches to alternative models when failures occur
- */
+import { recordStoppedModel, recordActiveModel } from "./model-status-tracker";
 
 export interface FallbackConfig {
   maxRetries: number;
@@ -23,40 +20,42 @@ export interface ModelAttempt {
  */
 const FALLBACK_MODELS = {
   code: [
-    "Qwen/Qwen2.5-72B-Instruct",
-    "meta-llama/Llama-3.3-70B-Instruct",
-    "deepseek/deepseek-chat",
-    "meta-llama/llama-3.3-70b-instruct",
-    "openai/gpt-4o-mini",
+    "cohere/north-mini-code:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/free",
   ],
   math: [
-    "Qwen/Qwen2.5-72B-Instruct",
-    "meta-llama/Llama-3.3-70B-Instruct",
-    "deepseek/deepseek-chat",
-    "meta-llama/llama-3.3-70b-instruct",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/free",
   ],
   vision: [
-    "openai/gpt-4o-mini",
-    "meta-llama/llama-3.3-70b-instruct",
-    "deepseek/deepseek-chat",
+    "nvidia/nemotron-nano-12b-v2-vl:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "openrouter/free",
   ],
   general: [
-    "Qwen/Qwen2.5-72B-Instruct",
-    "meta-llama/Llama-3.3-70B-Instruct",
-    "deepseek/deepseek-chat",
-    "meta-llama/llama-3.3-70b-instruct",
-    "openai/gpt-4o-mini",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "poolside/laguna-s-2.1:free",
+    "openrouter/free",
   ],
   creative: [
-    "Qwen/Qwen2.5-72B-Instruct",
-    "meta-llama/Llama-3.3-70B-Instruct",
-    "deepseek/deepseek-chat",
-    "meta-llama/llama-3.3-70b-instruct",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/free",
   ],
   reasoning: [
-    "Qwen/Qwen2.5-72B-Instruct",
-    "deepseek/deepseek-chat",
-    "meta-llama/Llama-3.3-70B-Instruct",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/free",
   ]
 };
 
@@ -255,68 +254,168 @@ export async function fetchParallelWithFallback(
 /**
  * Helper: Fetch with timeout
  */
+let activeKeysPool: string[] = [];
+const failingKeysMap = new Map<string, number>(); // key -> cooldown until timestamp
+
+export function getKeysPool(customKey?: string, forceRefresh: boolean = true): string[] {
+  const discoveredKeys: string[] = [];
+
+  if (customKey && customKey.trim()) {
+    discoveredKeys.push(customKey.trim());
+  }
+
+  try {
+    if (typeof process !== "undefined" && typeof require !== "undefined") {
+      const fs = require("fs");
+      const path = require("path");
+      for (const envFile of [".env.local", ".env"]) {
+        try {
+          const filePath = path.resolve(process.cwd(), envFile);
+          if (fs.existsSync(filePath)) {
+            const content = fs.readFileSync(filePath, "utf-8");
+            for (const line of content.split("\n")) {
+              if (line.startsWith("OPENROUTER_API_KEY") || line.startsWith("OPENROUTER_API_KEYS")) {
+                const val = line.split("=")[1]?.replace(/["'\r]/g, "").trim();
+                if (val) {
+                  for (const k of val.split(",")) {
+                    const trimmed = k.trim();
+                    if (trimmed && !discoveredKeys.includes(trimmed)) {
+                      discoveredKeys.push(trimmed);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+          // ignore fs errors
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  const rawEnvKeys = (process.env["OPENROUTER_API_KEYS"] || process.env["OPENROUTER_API_KEY"] || "")
+    .split(",")
+    .map(k => k.trim())
+    .filter(Boolean);
+
+  for (const k of rawEnvKeys) {
+    if (k && !discoveredKeys.includes(k)) discoveredKeys.push(k);
+  }
+
+  // Filter expired cooldowns
+  const now = Date.now();
+  for (const [key, until] of failingKeysMap.entries()) {
+    if (now > until) {
+      failingKeysMap.delete(key);
+    }
+  }
+
+  // Sort keys: healthy keys first, failing/cooling-down keys at the back
+  const healthyKeys = discoveredKeys.filter(k => !failingKeysMap.has(k));
+  const coolingKeys = discoveredKeys.filter(k => failingKeysMap.has(k));
+
+  activeKeysPool = [...healthyKeys, ...coolingKeys];
+  return activeKeysPool.length > 0 ? activeKeysPool : rawEnvKeys;
+}
+
+export function promoteWorkingKey(workingKey: string) {
+  if (!workingKey) return;
+  failingKeysMap.delete(workingKey);
+  const current = getKeysPool();
+  if (current.length <= 1 || current[0] === workingKey) return;
+  activeKeysPool = [workingKey, ...current.filter(k => k !== workingKey)];
+}
+
+export function demoteFailingKey(failingKey: string, cooldownMs: number = 3 * 60 * 1000) {
+  if (!failingKey) return;
+  failingKeysMap.set(failingKey, Date.now() + cooldownMs);
+  const current = getKeysPool();
+  if (current.length <= 1) return;
+  activeKeysPool = [...current.filter(k => k !== failingKey), failingKey];
+}
+
 async function fetchModelResponseWithTimeout(
   messages: Array<{ role: string; content: any }>,
   modelId: string,
-  apiKey: string,
+  apiKey: string | string[],
   behaviorPrompt?: string,
-  timeout: number = 8000
+  timeout: number = 7000
 ): Promise<{ content: string; modelId: string }> {
+  const isHf = modelId.startsWith("Qwen/") || modelId.startsWith("meta-llama/Llama") || modelId.startsWith("mistralai/");
+  const hfKey = process.env["HUGGINGFACE_API_KEY"];
+  const targetUrl = isHf && hfKey
+    ? "https://router.huggingface.co/v1/chat/completions"
+    : "https://openrouter.ai/api/v1/chat/completions";
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const pool = getKeysPool();
+  const passedKeys = Array.isArray(apiKey) ? apiKey : [apiKey];
+  const keysToTry = isHf && hfKey
+    ? [hfKey]
+    : Array.from(new Set([...pool, ...passedKeys.filter(Boolean)]));
 
-  try {
-    const messagesWithPrompt = behaviorPrompt
-      ? [{ role: "system", content: behaviorPrompt }, ...messages]
-      : messages;
+  let lastError: Error | null = null;
 
-    const isHf = modelId.startsWith("Qwen/") || modelId.startsWith("meta-llama/Llama") || modelId.startsWith("mistralai/");
-    const hfKey = process.env["HUGGINGFACE_API_KEY"];
-    const targetUrl = isHf && hfKey
-      ? "https://router.huggingface.co/v1/chat/completions"
-      : "https://openrouter.ai/api/v1/chat/completions";
-    const authKey = isHf && hfKey ? hfKey : apiKey;
+  for (const currentKey of keysToTry) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const headers: Record<string, string> = {
-      "Authorization": `Bearer ${authKey}`,
-      "Content-Type": "application/json",
-    };
-    if (!isHf) {
-      headers["HTTP-Referer"] = "https://ryuk.ai";
-      headers["X-Title"] = "rYuk.ai";
+    try {
+      const messagesWithPrompt = behaviorPrompt
+        ? [{ role: "system", content: behaviorPrompt }, ...messages]
+        : messages;
+
+      const headers: Record<string, string> = {
+        "Authorization": `Bearer ${currentKey}`,
+        "Content-Type": "application/json",
+      };
+      if (!isHf) {
+        headers["HTTP-Referer"] = "https://ryuk.ai";
+        headers["X-Title"] = "rYuk.ai";
+      }
+
+      const response = await fetch(targetUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: modelId,
+          messages: messagesWithPrompt,
+          temperature: 0.7,
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        lastError = new Error(`HTTP ${response.status}: ${errText.slice(0, 100) || response.statusText}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+
+      if (!content) {
+        lastError = new Error("No content in response");
+        continue;
+      }
+
+      // Automatically remember this key as the primary working key and mark model active
+      promoteWorkingKey(currentKey);
+      recordActiveModel(modelId);
+      return { content, modelId };
+
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error instanceof Error ? error : new Error(String(error));
     }
-
-    const response = await fetch(targetUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: modelId,
-        messages: messagesWithPrompt,
-        temperature: 0.7,
-      }),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error("No content in response");
-    }
-
-    return { content, modelId };
-
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
   }
+
+  recordStoppedModel(modelId, lastError?.message || "Failed / Rate Limited");
+  throw lastError || new Error(`All API keys failed for model ${modelId}`);
 }
 
 /**

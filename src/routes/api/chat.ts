@@ -3,13 +3,21 @@ import { generateSystemPrompt, type AIProvider, type ChatGPTPersonality } from "
 import { executeHybridEnsemble, type MergeStrategy } from "../../lib/hybrid-ensemble";
 import { getOpenRouterModels, getBestModelsForTask, getFreeModels } from "../../lib/openrouter-models";
 import { getAdaptiveEnsembleConfig } from "../../lib/adaptive-ensemble";
-import { fetchParallelWithFallback, getFallbackModels } from "../../lib/model-fallback";
-import { fetchLiveOpenRouterModels, recordStoppedModel, isModelStopped } from "./models";
+import { fetchParallelWithFallback, getFallbackModels, getKeysPool, promoteWorkingKey, demoteFailingKey } from "../../lib/model-fallback";
+import { fetchLiveOpenRouterModels, recordStoppedModel, recordActiveModel, isModelStopped } from "./models";
 
-// Server-side proxy to OmniRoute, OpenRouter, and Hugging Face completion endpoints.
+function getOpenAIKey(): string {
+  if (typeof process !== "undefined" && process.env && process.env["OPENAI_API_KEY"]) {
+    return process.env["OPENAI_API_KEY"].trim();
+  }
+  return "";
+}
+
+// Server-side proxy to OmniRoute, OpenAI, OpenRouter, and Hugging Face completion endpoints.
 const OMNIROUTE_CHAT_URL = process.env["OMNIROUTE_BASE_URL"]
   ? `${process.env["OMNIROUTE_BASE_URL"]}/chat/completions`
   : "http://localhost:20128/v1/chat/completions";
+const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 const HUGGINGFACE_CHAT_URL = "https://router.huggingface.co/v1/chat/completions";
 
@@ -97,7 +105,7 @@ type ChatRequestBody = {
 };
 
 function detectTaskParameters(messages: Array<{ role: string; content: any }>): {
-  task: "code" | "math" | "writing" | "general" | "image" | "doc";
+  task: "vision_multimodal" | "code_engineering" | "reasoning_math" | "synthesis_fast_chat";
   temperature: number;
   top_p: number;
 } {
@@ -146,58 +154,104 @@ function detectTaskParameters(messages: Array<{ role: string; content: any }>): 
 
   const isCode =
     lastUserMsg.includes("code") ||
+    lastUserMsg.includes("coding") ||
+    lastUserMsg.includes("program") ||
+    lastUserMsg.includes("developer") ||
     lastUserMsg.includes("python") ||
     lastUserMsg.includes("typescript") ||
     lastUserMsg.includes("javascript") ||
     lastUserMsg.includes("react") ||
+    lastUserMsg.includes("nextjs") ||
+    lastUserMsg.includes("vue") ||
+    lastUserMsg.includes("angular") ||
+    lastUserMsg.includes("node") ||
+    lastUserMsg.includes("c++") ||
+    lastUserMsg.includes("rust") ||
+    lastUserMsg.includes("golang") ||
+    lastUserMsg.includes("java") ||
+    lastUserMsg.includes("sql") ||
+    lastUserMsg.includes("database") ||
+    lastUserMsg.includes("docker") ||
+    lastUserMsg.includes("kubernetes") ||
+    lastUserMsg.includes("git") ||
+    lastUserMsg.includes("bash") ||
+    lastUserMsg.includes("shell") ||
+    lastUserMsg.includes("linux") ||
+    lastUserMsg.includes("devops") ||
     lastUserMsg.includes("debug") ||
+    lastUserMsg.includes("error") ||
+    lastUserMsg.includes("bug") ||
+    lastUserMsg.includes("refactor") ||
     lastUserMsg.includes("function") ||
     lastUserMsg.includes("api") ||
-    lastUserMsg.includes("sql") ||
-    lastUserMsg.includes("error") ||
+    lastUserMsg.includes("class") ||
+    lastUserMsg.includes("struct") ||
+    lastUserMsg.includes("interface") ||
+    lastUserMsg.includes("component") ||
     lastUserMsg.includes("build") ||
     lastUserMsg.includes("html") ||
     lastUserMsg.includes("css") ||
-    lastUserMsg.includes("class") ||
-    lastUserMsg.includes("component") ||
+    lastUserMsg.includes("tailwind") ||
+    lastUserMsg.includes("regex") ||
+    lastUserMsg.includes("json") ||
+    lastUserMsg.includes("yaml") ||
     lastUserMsg.includes("@code") ||
     lastUserMsg.includes("```");
 
-  const isMathOrLogic =
+  const isMathOrReasoning =
     lastUserMsg.includes("calculate") ||
     lastUserMsg.includes("solve") ||
     lastUserMsg.includes("proof") ||
+    lastUserMsg.includes("prove") ||
     lastUserMsg.includes("math") ||
+    lastUserMsg.includes("mathematics") ||
     lastUserMsg.includes("equation") ||
+    lastUserMsg.includes("calculus") ||
+    lastUserMsg.includes("integral") ||
+    lastUserMsg.includes("derivative") ||
+    lastUserMsg.includes("theorem") ||
+    lastUserMsg.includes("logic") ||
+    lastUserMsg.includes("reasoning") ||
+    lastUserMsg.includes("step-by-step") ||
+    lastUserMsg.includes("puzzle") ||
+    lastUserMsg.includes("riddle") ||
     lastUserMsg.includes("algorithm") ||
     lastUserMsg.includes("probability") ||
     lastUserMsg.includes("statistics") ||
-    lastUserMsg.includes("derive");
+    lastUserMsg.includes("algebra") ||
+    lastUserMsg.includes("geometry") ||
+    lastUserMsg.includes("derive") ||
+    lastUserMsg.includes("matrix") ||
+    lastUserMsg.includes("combinatorics") ||
+    lastUserMsg.includes("optimization") ||
+    lastUserMsg.includes("formula") ||
+    lastUserMsg.includes("latex") ||
+    lastUserMsg.includes("$$");
 
-  const isCreativeWriting =
-    lastUserMsg.includes("story") ||
-    lastUserMsg.includes("poem") ||
-    lastUserMsg.includes("creative") ||
-    lastUserMsg.includes("script") ||
-    lastUserMsg.includes("lyrics") ||
-    lastUserMsg.includes("dialogue");
+  const isVision =
+    hasImage ||
+    lastUserMsg.includes("image") ||
+    lastUserMsg.includes("picture") ||
+    lastUserMsg.includes("photo") ||
+    lastUserMsg.includes("screenshot") ||
+    lastUserMsg.includes("diagram") ||
+    lastUserMsg.includes("chart") ||
+    lastUserMsg.includes("graph") ||
+    lastUserMsg.includes("visual") ||
+    lastUserMsg.includes("ocr") ||
+    lastUserMsg.includes("describe this image") ||
+    lastUserMsg.includes("@create image");
 
-  if (hasImage) {
-    return { task: "image", temperature: 0.15, top_p: 0.9 };
-  }
-  if (hasDoc) {
-    return { task: "doc", temperature: 0.15, top_p: 0.95 };
+  if (isVision) {
+    return { task: "vision_multimodal", temperature: 0.15, top_p: 0.9 };
   }
   if (isCode) {
-    return { task: "code", temperature: 0.1, top_p: 0.85 };
+    return { task: "code_engineering", temperature: 0.1, top_p: 0.85 };
   }
-  if (isMathOrLogic) {
-    return { task: "math", temperature: 0.1, top_p: 0.85 };
+  if (isMathOrReasoning) {
+    return { task: "reasoning_math", temperature: 0.1, top_p: 0.85 };
   }
-  if (isCreativeWriting) {
-    return { task: "writing", temperature: 0.65, top_p: 0.95 };
-  }
-  return { task: "general", temperature: 0.25, top_p: 0.9 };
+  return { task: "synthesis_fast_chat", temperature: 0.3, top_p: 0.9 };
 }
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
@@ -301,19 +355,20 @@ export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        let body: ChatRequestBody;
         try {
-          body = await request.json();
-        } catch {
-          return Response.json({ error: "Invalid JSON body." }, { status: 400 });
-        }
+          let body: ChatRequestBody;
+          try {
+            body = await request.json();
+          } catch {
+            return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+          }
 
-        if (!Array.isArray(body.messages) || body.messages.length === 0) {
-          return Response.json(
-            { error: "`messages` must be a non-empty array of { role, content }." },
-            { status: 400 },
-          );
-        }
+          if (!Array.isArray(body.messages) || body.messages.length === 0) {
+            return Response.json(
+              { error: "`messages` must be a non-empty array of { role, content }." },
+              { status: 400 },
+            );
+          }
 
         // 1. Process live web search if plugin is @web
         const lastUser = [...body.messages].reverse().find((m) => m.role === "user");
@@ -354,9 +409,10 @@ export const Route = createFileRoute("/api/chat")({
 
         const taskParams = detectTaskParameters(body.messages);
 
-        // Check if hybrid ensemble mode is enabled (bypass for image tasks to prioritize OpenAI GPT Vision directly)
-        if (body.hybridMode?.enabled && taskParams.task !== "image") {
-          const openrouterKey = process.env["OPENROUTER_API_KEY"];
+        // Check if hybrid ensemble mode is enabled (bypass for vision tasks to prioritize dedicated vision models)
+        if (body.hybridMode?.enabled && taskParams.task !== "vision_multimodal") {
+          const openrouterKeys = getKeysPool();
+          const openrouterKey = openrouterKeys[0];
 
           if (openrouterKey) {
             try {
@@ -371,7 +427,7 @@ export const Route = createFileRoute("/api/chat")({
               const freeModels = getFreeModels(allModels);
 
               // Get best models for this task
-              const taskType = taskParams.task === "doc" ? "general" : taskParams.task;
+              const taskType = taskParams.task === "code_engineering" ? "code" : taskParams.task === "reasoning_math" ? "math" : "general";
               const bestModels = getBestModelsForTask(
                 freeModels,
                 taskType as any,
@@ -386,14 +442,14 @@ export const Route = createFileRoute("/api/chat")({
               // AUTOMATIC FALLBACK: Fetch responses with automatic model replacement
               const modelIds = bestModels.length > 0
                 ? bestModels.map(m => m.id)
-                : ["openrouter/free", "deepseek/deepseek-chat", "google/gemma-4-31b-it:free"];
+                : ["nvidia/nemotron-3-ultra-550b-a55b:free", "openrouter/free"];
 
               console.info(`[Fallback System] Fetching from ${modelIds.length} models with automatic fallback`);
 
               const responses = await fetchParallelWithFallback(
                 body.messages,
                 modelIds,
-                openrouterKey,
+                openrouterKeys,
                 taskType as any,
                 behaviorPrompt,
                 Math.min(adaptiveConfig.maxModels, 3),
@@ -446,11 +502,9 @@ export const Route = createFileRoute("/api/chat")({
         }
 
         const rawModel = body.model || "ryuk/hybrid-ensemble";
-        const rawKeysStr = (process.env["OPENROUTER_API_KEYS"] || process.env["OPENROUTER_API_KEY"] || "");
-        const openrouterKeys = rawKeysStr
-          .split(",")
-          .map((k) => k.trim())
-          .filter(Boolean);
+        const openaiKey = getOpenAIKey();
+        const clientApiKey = request.headers.get("x-openrouter-key") || request.headers.get("x-api-key") || body.apiKey;
+        const openrouterKeys = getKeysPool(clientApiKey || undefined, true);
         const hfKey = process.env["HUGGINGFACE_API_KEY"];
 
         // Prioritized candidate list based on user selection & task type
@@ -460,6 +514,11 @@ export const Route = createFileRoute("/api/chat")({
           if (customUrl && customKey) {
             candidates.push({ url: customUrl, model, key: customKey });
             return;
+          }
+          // Direct OpenAI API support for official OpenAI / ChatGPT models
+          if (openaiKey && (model.startsWith("openai/") || model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("chatgpt-"))) {
+            const directModel = model.replace(/^openai\//, "");
+            candidates.push({ url: OPENAI_CHAT_URL, model: directModel, key: openaiKey });
           }
           for (const key of openrouterKeys) {
             candidates.push({ url: OPENROUTER_CHAT_URL, model, key });
@@ -480,49 +539,60 @@ export const Route = createFileRoute("/api/chat")({
           // Fallback if live query is unreachable
         }
 
-        // Tier 1: Best Primary Models (High Intelligence & Low Overhead)
-        const PRIMARY_TIER_MODELS = [
-          "openai/gpt-4o-mini",
-          "meta-llama/llama-3.3-70b-instruct",
-          "qwen/qwen-2.5-72b-instruct",
-          "deepseek/deepseek-chat",
-        ];
-
-        // Tier 2: Free Fallback Models in prioritized order
-        const FREE_TIER_PRIORITY = [
-          "liquid/lfm-2.5-2.6b:free",
+        // Domain-Specialized FREE Chains based on User Prompting Intent
+        const REASONING_MATH_CHAIN = [
+          "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
           "nvidia/nemotron-3.5-lightning:free",
-          "google/gemma-4-31b-it:free",
-          "google/gemma-4-26b-a4b-it:free",
-          "cohere/north-mini-code:free",
-          "poolside/laguna-s-2.1:free",
           "openai/gpt-oss-20b:free",
-          "z-ai/glm-5.2:free",
+          "nvidia/nemotron-3-super-120b-a12b:free",
           "openrouter/free",
         ];
 
-        // Combine all discovered free models while maintaining strict priority
-        const remainingFree = dynamicFreeModels.filter(
-          (id) => !FREE_TIER_PRIORITY.includes(id) && !id.includes("dots-3-note-preview")
-        );
-
-        const ORDERED_FALLBACK_CHAIN = Array.from(
-          new Set([...PRIMARY_TIER_MODELS, ...FREE_TIER_PRIORITY, ...remainingFree])
-        );
-
-        const VISION_PRIORITY_MODELS = [
-          "openai/gpt-4o",
-          "openai/gpt-4o-mini",
-          "google/gemini-2.0-flash-001",
-          "anthropic/claude-3.5-sonnet",
-          "qwen/qwen-2.5-vl-72b-instruct",
-          "mistralai/pixtral-12b",
+        const CODE_ENGINEERING_CHAIN = [
+          "cohere/north-mini-code:free",
+          "poolside/laguna-s-2.1:free",
+          "poolside/laguna-xs-2.1:free",
+          "nvidia/nemotron-3.5-lightning:free",
+          "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "openrouter/free",
         ];
 
-        const isImageTask = taskParams.task === "image";
-        const ACTIVE_CHAIN = isImageTask
-          ? Array.from(new Set([...VISION_PRIORITY_MODELS, ...ORDERED_FALLBACK_CHAIN]))
-          : ORDERED_FALLBACK_CHAIN;
+        const VISION_MULTIMODAL_CHAIN = [
+          "nvidia/nemotron-nano-12b-v2-vl:free",
+          "google/gemma-4-26b-a4b-it:free",
+          "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+          "dots-studio/dots-3-note-preview:free",
+          "openrouter/free",
+        ];
+
+        const SYNTHESIS_FAST_CHAT_CHAIN = [
+          "nvidia/nemotron-3-super-120b-a12b:free",
+          "nvidia/nemotron-nano-9b-v2:free",
+          "nvidia/nemotron-3-nano-30b-a3b:free",
+          "google/gemma-4-26b-a4b-it:free",
+          "dots-studio/dots-3-note-preview:free",
+          "nvidia/nemotron-3.5-lightning:free",
+          "openrouter/free",
+        ];
+
+        let domainTargetChain = SYNTHESIS_FAST_CHAT_CHAIN;
+        if (taskParams.task === "vision_multimodal") {
+          domainTargetChain = VISION_MULTIMODAL_CHAIN;
+        } else if (taskParams.task === "code_engineering") {
+          domainTargetChain = CODE_ENGINEERING_CHAIN;
+        } else if (taskParams.task === "reasoning_math") {
+          domainTargetChain = REASONING_MATH_CHAIN;
+        }
+
+        // Combine all discovered free models as broad backup fallback
+        const remainingFree = dynamicFreeModels.filter(
+          (id) => (id.endsWith(":free") || id === "openrouter/free") && !domainTargetChain.includes(id)
+        );
+
+        const ACTIVE_CHAIN = Array.from(
+          new Set([...domainTargetChain, ...remainingFree])
+        );
 
         if (
           rawModel === "ryuk/v1-high" ||
@@ -549,11 +619,7 @@ export const Route = createFileRoute("/api/chat")({
 
         let lastErrorMessage = "All AI models failed to respond.";
         let lastStatus = 502;
-
-        const hasUnstopped = candidates.some((c) => c.key && !isModelStopped(c.model));
-        const activeCandidates = hasUnstopped
-          ? candidates.filter((c) => c.key && !isModelStopped(c.model))
-          : candidates.filter((c) => Boolean(c.key));
+        const activeCandidates = candidates.filter((c) => Boolean(c.key));
 
         for (const target of activeCandidates) {
           if (!target.key) continue;
@@ -569,12 +635,16 @@ export const Route = createFileRoute("/api/chat")({
               headers["X-Title"] = "rYuk.ai Workspace";
             }
 
-            // Check if model supports vision. If not, serialize array content back into strings.
+            // Check if model supports vision.
             const modelLower = target.model.toLowerCase();
             const supportsVision =
               modelLower.includes("gpt-4o") ||
               modelLower.includes("vl") ||
               modelLower.includes("vision") ||
+              modelLower.includes("omni") ||
+              modelLower.includes("gemma-4") ||
+              modelLower.includes("dots-3") ||
+              modelLower.includes("openrouter/free") ||
               modelLower.includes("claude-3") ||
               modelLower.includes("gemini") ||
               modelLower.includes("pixtral");
@@ -582,7 +652,15 @@ export const Route = createFileRoute("/api/chat")({
             const sanitizedMessages = body.messages.map((m) => {
               if (Array.isArray(m.content)) {
                 if (supportsVision) {
-                  return m;
+                  return {
+                    ...m,
+                    content: m.content.map((item: any) => {
+                      if (item.type === "text" && (!item.text || !item.text.trim())) {
+                        return { type: "text", text: "Analyze and explain the contents of this image in detail." };
+                      }
+                      return item;
+                    })
+                  };
                 } else {
                   // Fallback for text-only models: extract the text content block only
                   const textBlock = m.content.find((c: any) => c.type === "text");
@@ -639,6 +717,8 @@ export const Route = createFileRoute("/api/chat")({
             clearTimeout(timeoutId);
 
             if (upstream.ok && upstream.body) {
+              if (target.key) promoteWorkingKey(target.key);
+              recordActiveModel(target.model);
               return new Response(upstream.body, {
                 status: 200,
                 headers: {
@@ -658,20 +738,27 @@ export const Route = createFileRoute("/api/chat")({
             } catch {
               /* keep raw text */
             }
-            console.warn(`Model candidate ${target.model} returned error (${upstream.status}): ${message}`);
-            // Automatically shift failing/stopped model to disabled
-            recordStoppedModel(target.model, message);
+            if (target.key && (upstream.status === 429 || upstream.status === 401)) {
+              demoteFailingKey(target.key);
+            } else if (upstream.status === 404 || upstream.status === 503) {
+              // Automatically shift dead/decommissioned model to disabled
+              recordStoppedModel(target.model, message);
+            }
+            console.warn(`Model candidate ${target.model} [Key: ...${(target.key || "").slice(-6)}] returned ${upstream.status}: ${message}. Switching to next key/candidate...`);
             lastErrorMessage = `${target.model} failed (${upstream.status}): ${message}`;
             lastStatus = upstream.status || 502;
           } catch (err) {
             clearTimeout(timeoutId);
             console.warn(`Model candidate ${target.model} threw exception:`, err);
-            recordStoppedModel(target.model, err instanceof Error ? err.message : String(err));
             lastErrorMessage = err instanceof Error ? err.message : String(err);
           }
         }
 
-        return Response.json({ error: lastErrorMessage }, { status: lastStatus });
+          return Response.json({ error: lastErrorMessage }, { status: lastStatus });
+        } catch (globalErr: any) {
+          console.error("API /api/chat global error:", globalErr);
+          return Response.json({ error: globalErr?.message || "Internal server error." }, { status: 500 });
+        }
       },
     },
   },
